@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Image, Alert, TextInput,
@@ -11,7 +11,7 @@ import { formatTime, formatDate } from '../utils/helpers';
 
 export default function ProfileScreen({ navigation }) {
   const { state, dispatch } = useApp();
-  const { currentUser, users, posts, plans } = state;
+  const { currentUser, users, posts, plans, knowledge } = state;
   const [tab, setTab] = useState('posts'); // 'posts' | 'plans' | 'friends'
   const [editing, setEditing] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name || '');
@@ -19,6 +19,19 @@ export default function ProfileScreen({ navigation }) {
 
   const myPosts = posts.filter(p => p.userId === currentUser.id);
   const myPlans = plans.filter(p => p.userId === currentUser.id);
+  const incomingCommentCount = useMemo(() => {
+    const postComments = myPosts.reduce((sum, post) => {
+      const next = (post.comments || []).filter(comment => comment.userId !== currentUser.id).length;
+      return sum + next;
+    }, 0);
+    const knowledgeComments = (knowledge || [])
+      .filter(item => item.userId === currentUser.id)
+      .reduce((sum, item) => {
+        const next = (item.comments || []).filter(comment => comment.userId !== currentUser.id).length;
+        return sum + next;
+      }, 0);
+    return postComments + knowledgeComments;
+  }, [currentUser.id, knowledge, myPosts]);
   const myFriends = users.filter(u => (currentUser.friends || []).includes(u.id));
   const recommendFriends = users.filter(u => u.id !== currentUser.id && !(currentUser.friends || []).includes(u.id));
 
@@ -28,13 +41,7 @@ export default function ProfileScreen({ navigation }) {
   ];
 
   const openPostMediaViewer = (post) => {
-    const items = buildPostMediaItems(post);
-    if (items.length === 0) return;
-    navigation.navigate('MediaViewer', {
-      items,
-      initialIndex: 0,
-      sourceTab: 'ProfileTab',
-    });
+    navigation.navigate('PostDetail', { postId: post.id, post });
   };
 
   const handleAddFriend = (user) => {
@@ -100,8 +107,8 @@ export default function ProfileScreen({ navigation }) {
       <TouchableOpacity
         key={item.id}
         style={styles.miniCard}
-        activeOpacity={hasMedia ? 0.88 : 1}
-        onPress={hasMedia ? () => openPostMediaViewer(item) : undefined}
+        activeOpacity={0.88}
+        onPress={() => openPostMediaViewer(item)}
       >
         {hasImages ? (
           <Image source={{ uri: item.images[0] }} style={styles.miniImg} />
@@ -129,11 +136,33 @@ export default function ProfileScreen({ navigation }) {
   const renderPlan = (item) => {
     const done = (item.tasks || []).filter(t => t.done).length;
     const total = (item.tasks || []).length;
+
+    const handleDeletePlan = () => {
+      Alert.alert('删除规划', '确认删除这条规划？', [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await dispatch({ type: 'DELETE_PLAN', payload: item.id });
+            if (!result?.ok) {
+              Alert.alert('删除失败', result?.error || '请稍后重试');
+            }
+          },
+        },
+      ]);
+    };
+
     return (
       <View key={item.id} style={styles.planItem}>
         <View style={styles.planItemHeader}>
           <Text style={styles.planItemTitle}>{item.title || '规划'}</Text>
-          <Text style={styles.planItemDate}>{formatDate(item.date)}</Text>
+          <View style={styles.planHeaderRight}>
+            <Text style={styles.planItemDate}>{formatDate(item.date)}</Text>
+            <TouchableOpacity onPress={handleDeletePlan}>
+              <Ionicons name="trash-outline" size={17} color="#FF6B6B" />
+            </TouchableOpacity>
+          </View>
         </View>
         {total > 0 && (
           <View style={styles.planProgress}>
@@ -215,6 +244,13 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </ScrollView>
       </View>
+
+      {incomingCommentCount > 0 && (
+        <View style={styles.noticeBar}>
+          <Ionicons name="notifications-outline" size={16} color="#FF8C42" />
+          <Text style={styles.noticeText}>你收到了 {incomingCommentCount} 条新评论互动</Text>
+        </View>
+      )}
 
       {/* Tab */}
       <View style={styles.tabs}>
@@ -321,6 +357,18 @@ const styles = StyleSheet.create({
   statNum: { fontSize: 22, fontWeight: 'bold', color: '#333' },
   statLabel: { fontSize: 13, color: '#999', marginTop: 2 },
   section: { backgroundColor: '#fff', padding: 16, marginBottom: 12 },
+  noticeBar: {
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF4E8',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  noticeText: { color: '#E67A2E', fontSize: 13, fontWeight: '600' },
   sectionTitle: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 12 },
   userList: { flexDirection: 'row', gap: 12 },
   userChip: {
@@ -357,10 +405,11 @@ const styles = StyleSheet.create({
   thumbText: { fontSize: 11, color: '#4ECDC4', lineHeight: 16 },
   mediaBadge: { fontSize: 10, color: '#4ECDC4', marginTop: 6, fontWeight: '700' },
   miniCaption: { fontSize: 11, color: '#666', lineHeight: 15, marginTop: 2, minHeight: 30 },
-  miniTime: { fontSize: 10, color: '#bbb', marginTop: 4, textAlign: 'center' },
+  miniTime: { fontSize: 10, color: '#bbb', marginTop: 4, textAlign: 'left' },
   planList: { paddingHorizontal: 12, gap: 10 },
   planItem: { backgroundColor: '#fff', borderRadius: 14, padding: 14 },
   planItemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  planHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   planItemTitle: { fontSize: 15, fontWeight: '600', color: '#333' },
   planItemDate: { fontSize: 12, color: '#999' },
   planProgress: { flexDirection: 'row', alignItems: 'center', gap: 8 },

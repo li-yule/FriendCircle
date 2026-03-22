@@ -105,6 +105,8 @@ function normalizeComment(comment) {
   return {
     id: comment?.id || generateId(),
     userId: comment?.userId || comment?.user_id || '',
+    replyToUserId: comment?.replyToUserId || comment?.reply_to_user_id || '',
+    replyToUserName: comment?.replyToUserName || comment?.reply_to_user_name || '',
     text: comment?.text || '',
     images: toUniqueStrings(comment?.images),
     audioFiles: ensureArray(comment?.audioFiles || comment?.audio_files).map(normalizeAudioFile),
@@ -653,6 +655,8 @@ function getFriendlyErrorMessage(error, fallback) {
 export function AppProvider({ children }) {
   const [state, baseDispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(state);
+  const cloudUserIdRef = useRef(null);
+  const refreshTimerRef = useRef(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -665,7 +669,22 @@ export function AppProvider({ children }) {
       const hydrate = async (userId) => {
         const snapshot = await fetchCloudState(userId);
         if (!active) return;
+        cloudUserIdRef.current = userId;
         baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+      };
+
+      const scheduleHydrate = (userId, delay = 250) => {
+        if (!userId) return;
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+        }
+        refreshTimerRef.current = setTimeout(() => {
+          hydrate(userId).catch(() => {
+            if (active) {
+              baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+            }
+          });
+        }, delay);
       };
 
       const loadCloud = async () => {
@@ -674,12 +693,15 @@ export function AppProvider({ children }) {
           if (!active) return;
 
           if (data.session?.user) {
+            cloudUserIdRef.current = data.session.user.id;
             await hydrate(data.session.user.id);
           } else {
+            cloudUserIdRef.current = null;
             baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
           }
         } catch {
           if (active) {
+            cloudUserIdRef.current = null;
             baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
           }
         }
@@ -687,21 +709,32 @@ export function AppProvider({ children }) {
 
       const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
-          hydrate(session.user.id).catch(() => {
-            if (active) {
-              baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
-            }
-          });
+          cloudUserIdRef.current = session.user.id;
+          scheduleHydrate(session.user.id, 0);
         } else if (active) {
+          cloudUserIdRef.current = null;
           baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
         }
       });
+
+      const channel = supabase
+        .channel('friendcircle-sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => scheduleHydrate(cloudUserIdRef.current))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => scheduleHydrate(cloudUserIdRef.current))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => scheduleHydrate(cloudUserIdRef.current))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => scheduleHydrate(cloudUserIdRef.current))
+        .subscribe();
 
       loadCloud();
 
       return () => {
         active = false;
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = null;
+        }
         authListener.subscription.unsubscribe();
+        supabase.removeChannel(channel);
       };
     }
 
@@ -879,6 +912,8 @@ export function AppProvider({ children }) {
       } else if (action.type === 'DELETE_POST') {
         const { error } = await supabase.from('posts').delete().eq('id', action.payload).eq('user_id', currentUser.id);
         if (error) return { ok: false, error: '删除动态失败' };
+        baseDispatch(action);
+        return { ok: true };
       } else if (action.type === 'LIKE_POST') {
         const post = currentState.posts.find(item => item.id === action.payload?.postId);
         if (!post) return { ok: false, error: '动态不存在' };
@@ -888,6 +923,8 @@ export function AppProvider({ children }) {
           : [...(post.likes || []), action.payload?.userId];
         const { error } = await supabase.from('posts').update({ likes: nextLikes }).eq('id', post.id);
         if (error) return { ok: false, error: '点赞失败' };
+        baseDispatch(action);
+        return { ok: true };
       } else if (action.type === 'ADD_COMMENT' || action.type === 'DELETE_COMMENT') {
         const postId = action.payload?.postId;
         const post = currentState.posts.find(item => item.id === postId);
@@ -897,12 +934,26 @@ export function AppProvider({ children }) {
           : (post.comments || []).filter(comment => comment.id !== action.payload?.commentId);
         const { error } = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
         if (error) return { ok: false, error: '评论更新失败' };
+        baseDispatch(action.type === 'ADD_COMMENT'
+          ? {
+              type: 'ADD_COMMENT',
+              payload: {
+                postId,
+                comment: normalizeComment(action.payload?.comment),
+              },
+            }
+          : action);
+        return { ok: true };
       } else if (action.type === 'ADD_PLAN') {
         const { error } = await supabase.from('plans').insert(serializePlan(action.payload));
         if (error) return { ok: false, error: '发布规划失败' };
+        baseDispatch(action);
+        return { ok: true };
       } else if (action.type === 'DELETE_PLAN') {
         const { error } = await supabase.from('plans').delete().eq('id', action.payload).eq('user_id', currentUser.id);
         if (error) return { ok: false, error: '删除规划失败' };
+        baseDispatch(action);
+        return { ok: true };
       } else if (action.type === 'TOGGLE_PLAN_TASK' || action.type === 'UPDATE_PLAN') {
         const planId = action.type === 'TOGGLE_PLAN_TASK' ? action.payload?.planId : action.payload?.id;
         const plan = currentState.plans.find(item => item.id === planId);
@@ -917,19 +968,27 @@ export function AppProvider({ children }) {
           : { ...plan, ...action.payload };
         const { error } = await supabase.from('plans').update(serializePlan(mergedPlan)).eq('id', planId);
         if (error) return { ok: false, error: '规划更新失败' };
+        baseDispatch(action);
+        return { ok: true };
       } else if (action.type === 'ADD_KNOWLEDGE') {
         const payload = await prepareKnowledgePayload(currentUser.id, action.payload);
         const { error } = await supabase.from('knowledge').insert(serializeKnowledge(payload));
         if (error) return { ok: false, error: '保存错题失败' };
+        baseDispatch({ type: 'ADD_KNOWLEDGE', payload });
+        return { ok: true };
       } else if (action.type === 'UPDATE_KNOWLEDGE') {
         const existing = currentState.knowledge.find(item => item.id === action.payload?.id);
         if (!existing) return { ok: false, error: '错题不存在' };
         const payload = await prepareKnowledgePayload(currentUser.id, { ...existing, ...action.payload });
         const { error } = await supabase.from('knowledge').update(serializeKnowledge(payload)).eq('id', payload.id);
         if (error) return { ok: false, error: '更新错题失败' };
+        baseDispatch({ type: 'UPDATE_KNOWLEDGE', payload });
+        return { ok: true };
       } else if (action.type === 'DELETE_KNOWLEDGE') {
         const { error } = await supabase.from('knowledge').delete().eq('id', action.payload).eq('user_id', currentUser.id);
         if (error) return { ok: false, error: '删除错题失败' };
+        baseDispatch(action);
+        return { ok: true };
       } else if (action.type === 'LIKE_KNOWLEDGE') {
         const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
         if (!item) return { ok: false, error: '错题不存在' };
@@ -939,6 +998,8 @@ export function AppProvider({ children }) {
           : [...(item.likes || []), action.payload?.userId];
         const { error } = await supabase.from('knowledge').update({ likes: nextLikes }).eq('id', item.id);
         if (error) return { ok: false, error: '点赞失败' };
+        baseDispatch(action);
+        return { ok: true };
       } else if (action.type === 'ADD_KNOWLEDGE_COMMENT') {
         const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
         if (!item) return { ok: false, error: '错题不存在' };
@@ -950,13 +1011,23 @@ export function AppProvider({ children }) {
         const nextComments = [...(item.comments || []), uploadedComment];
         const { error } = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
         if (error) return { ok: false, error: '评论失败' };
+        baseDispatch({
+          type: 'ADD_KNOWLEDGE_COMMENT',
+          payload: {
+            knowledgeId: item.id,
+            comment: uploadedComment,
+          },
+        });
+        return { ok: true };
       } else {
         baseDispatch(action);
         return { ok: true };
       }
 
-      const snapshot = await fetchCloudState(currentUser.id);
-      baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+      if (['UPDATE_PROFILE', 'ADD_FRIEND', 'REMOVE_FRIEND', 'ADD_SUBJECT', 'REMOVE_SUBJECT'].includes(action.type)) {
+        const snapshot = await fetchCloudState(currentUser.id);
+        baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+      }
       return { ok: true };
     } catch (error) {
       return { ok: false, error: getFriendlyErrorMessage(error, error?.message || '云端同步失败，请检查 Supabase 配置') };

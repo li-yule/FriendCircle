@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView,
+  ScrollView, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
@@ -72,26 +72,17 @@ export default function PlanScreen({ navigation }) {
   );
 
   useEffect(() => {
+    const todayKey = toDateKey(new Date());
     if (availableDateKeys.length === 0) {
-      setSelectedDate(toDateKey(new Date()));
+      setSelectedDate(todayKey);
       return;
     }
-    if (!availableDateKeys.includes(selectedDate)) {
-      setSelectedDate(availableDateKeys[0]);
+    if (!availableDateKeys.includes(selectedDate) && selectedDate !== todayKey) {
+      setSelectedDate(todayKey);
     }
   }, [availableDateKeys, selectedDate]);
 
   const data = (activeTab === 'mine' ? myPlans : friendPlans).filter(item => toDateKey(item.date) === selectedDate);
-  const mineTasks = useMemo(
-    () => data.flatMap(plan => (plan.tasks || []).map(task => ({
-      ...task,
-      planId: plan.id,
-      planUserId: plan.userId,
-      planTitle: plan.title,
-      planDate: plan.date,
-    }))).sort((a, b) => (a.reminderTime || '99:99').localeCompare(b.reminderTime || '99:99')),
-    [data]
-  );
 
   const selectedDone = data.reduce((sum, plan) => sum + (plan.tasks || []).filter(t => t.done).length, 0);
   const selectedTotal = data.reduce((sum, plan) => sum + (plan.tasks || []).length, 0);
@@ -108,6 +99,23 @@ export default function PlanScreen({ navigation }) {
   const handleToggleTask = (planId, taskId, planUserId) => {
     if (planUserId !== currentUser.id) return;
     dispatch({ type: 'TOGGLE_PLAN_TASK', payload: { planId, taskId } });
+  };
+
+  const handleDeletePlan = (plan) => {
+    if (!plan || plan.userId !== currentUser.id) return;
+    Alert.alert('删除规划', '确认删除这条规划？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: async () => {
+          const result = await dispatch({ type: 'DELETE_PLAN', payload: plan.id });
+          if (!result?.ok) {
+            Alert.alert('删除失败', result?.error || '请稍后重试');
+          }
+        },
+      },
+    ]);
   };
 
   const renderTaskCard = (task, item, isMine) => {
@@ -141,7 +149,30 @@ export default function PlanScreen({ navigation }) {
     );
   };
 
-  const renderMineTask = (task) => renderTaskCard(task, task, true);
+  const renderMinePlan = (plan) => {
+    const doneTasks = (plan.tasks || []).filter(t => t.done).length;
+    const totalTasks = (plan.tasks || []).length;
+
+    return (
+      <View key={plan.id} style={styles.friendPlanCard}>
+        <View style={styles.friendPlanHeader}>
+          <View style={styles.friendPlanInfo}>
+            <Text style={styles.friendPlanAuthor}>我的规划</Text>
+            <Text style={styles.friendPlanDate}>{formatDate(plan.date)}</Text>
+          </View>
+          <View style={styles.minePlanActions}>
+            <Text style={styles.friendPlanProgress}>{doneTasks}/{totalTasks}</Text>
+            <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
+              <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {!!plan.title && <Text style={styles.friendPlanTitle}>{plan.title}</Text>}
+        {(plan.tasks || []).map(task => renderTaskCard(task, { id: plan.id, userId: plan.userId }, true))}
+      </View>
+    );
+  };
 
   const renderFriendPlan = (item) => {
     const author = getUserById(item.userId);
@@ -220,7 +251,7 @@ export default function PlanScreen({ navigation }) {
           <Text style={styles.sectionTitle}>{activeTab === 'mine' ? '我的规划' : '朋友规划'}</Text>
         </View>
 
-        {(activeTab === 'mine' ? mineTasks.length === 0 : data.length === 0) ? (
+        {data.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="calendar-outline" size={64} color="#ddd" />
             <Text style={styles.emptyText}>
@@ -229,7 +260,7 @@ export default function PlanScreen({ navigation }) {
           </View>
         ) : (
           activeTab === 'mine'
-            ? mineTasks.map(task => renderMineTask(task))
+            ? data.map(item => renderMinePlan(item))
             : data.map(item => renderFriendPlan(item))
         )}
       </ScrollView>
@@ -238,8 +269,6 @@ export default function PlanScreen({ navigation }) {
         visible={pickerVisible}
         title="选择查看日期"
         value={selectedDate}
-        minDate={availableDateKeys[0]}
-        maxDate={availableDateKeys[availableDateKeys.length - 1]}
         onClose={() => setPickerVisible(false)}
         onChange={setSelectedDate}
       />
@@ -346,6 +375,7 @@ const styles = StyleSheet.create({
   friendPlanAuthor: { fontSize: 15, fontWeight: '700', color: '#31404A' },
   friendPlanDate: { marginTop: 2, fontSize: 12, color: '#8A969E' },
   friendPlanProgress: { fontSize: 14, fontWeight: '700', color: '#19C2AF' },
+  minePlanActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   friendPlanTitle: { marginBottom: 10, fontSize: 16, fontWeight: '700', color: '#33414B' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 100 },
   emptyText: { color: '#bbb', fontSize: 14, marginTop: 12, textAlign: 'center' },

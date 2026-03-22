@@ -1,7 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BackHandler, View, Text, StyleSheet, TouchableOpacity, Image,
+  FlatList, Dimensions, Alert, ScrollView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 function normalizeItems(items) {
   if (!Array.isArray(items)) return [];
@@ -11,26 +18,69 @@ function normalizeItems(items) {
   }));
 }
 
-export default function MediaViewerScreen({ navigation, route }) {
-  const items = useMemo(() => normalizeItems(route.params?.items), [route.params?.items]);
-  const [index, setIndex] = useState(route.params?.initialIndex || 0);
-  const activeItem = items[index] || null;
-  const sourceTab = route.params?.sourceTab || 'FeedTab';
-  const videoSource = useMemo(() => {
-    if (activeItem?.type !== 'video' || !activeItem?.uri) {
-      return null;
-    }
+function inferExt(uri, fallback = 'jpg') {
+  const clean = String(uri || '').split('?')[0];
+  const match = clean.match(/\.([a-zA-Z0-9]+)$/);
+  return match ? match[1].toLowerCase() : fallback;
+}
 
-    return {
-      uri: activeItem.uri,
-      useCaching: true,
-    };
-  }, [activeItem?.type, activeItem?.uri]);
-  const player = useVideoPlayer(videoSource, playerInstance => {
+function getDownloadName(item) {
+  const ext = inferExt(item?.uri, item?.type === 'video' ? 'mp4' : 'jpg');
+  return `friendcircle_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+}
+
+function ImageSlide({ uri }) {
+  return (
+    <View style={styles.slide}>
+      <ScrollView
+        style={styles.zoomWrap}
+        contentContainerStyle={styles.zoomContent}
+        maximumZoomScale={4}
+        minimumZoomScale={1}
+        pinchGestureEnabled
+        bouncesZoom
+      >
+        <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+      </ScrollView>
+    </View>
+  );
+}
+
+function VideoSlide({ uri }) {
+  const source = useMemo(() => ({ uri, useCaching: true }), [uri]);
+  const player = useVideoPlayer(source, playerInstance => {
     playerInstance.loop = false;
     playerInstance.staysActiveInBackground = false;
     playerInstance.showNowPlayingNotification = false;
   });
+
+  useEffect(() => {
+    return () => {
+      player.pause();
+    };
+  }, [player]);
+
+  return (
+    <View style={styles.slide}>
+      <VideoView
+        player={player}
+        style={styles.video}
+        nativeControls
+        contentFit="contain"
+        surfaceType="textureView"
+      />
+    </View>
+  );
+}
+
+export default function MediaViewerScreen({ navigation, route }) {
+  const items = useMemo(() => normalizeItems(route.params?.items), [route.params?.items]);
+  const [index, setIndex] = useState(route.params?.initialIndex || 0);
+  const [saving, setSaving] = useState(false);
+  const flatListRef = useRef(null);
+
+  const sourceTab = route.params?.sourceTab || 'FeedTab';
+  const activeItem = items[index] || null;
 
   const navigateBack = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -41,33 +91,75 @@ export default function MediaViewerScreen({ navigation, route }) {
   }, [navigation, sourceTab]);
 
   const handleBack = useCallback(() => {
-    if (activeItem?.type === 'video') {
-      player.pause();
-    }
-
     navigateBack();
     return true;
-  }, [activeItem?.type, navigateBack, player]);
+  }, [navigateBack]);
 
   useEffect(() => {
     if (!items.length) {
       navigateBack();
+      return;
     }
-  }, [items, navigateBack]);
+
+    const initial = Math.min(Math.max(0, route.params?.initialIndex || 0), items.length - 1);
+    setIndex(initial);
+    setTimeout(() => {
+      flatListRef.current?.scrollToIndex?.({ index: initial, animated: false });
+    }, 0);
+  }, [items, navigateBack, route.params?.initialIndex]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleBack);
     return () => subscription.remove();
   }, [handleBack]);
 
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    const first = viewableItems?.[0];
+    if (typeof first?.index === 'number') {
+      setIndex(first.index);
+    }
+  }).current;
+
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
+
   const showPrev = () => {
     if (index <= 0) return;
-    setIndex(prev => prev - 1);
+    flatListRef.current?.scrollToIndex({ index: index - 1, animated: true });
   };
 
   const showNext = () => {
     if (index >= items.length - 1) return;
-    setIndex(prev => prev + 1);
+    flatListRef.current?.scrollToIndex({ index: index + 1, animated: true });
+  };
+
+  const handleSaveAsset = async () => {
+    if (!activeItem?.uri || saving) return;
+
+    setSaving(true);
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('保存失败', '请先允许访问相册权限');
+        return;
+      }
+
+      const fileName = getDownloadName(activeItem);
+      const targetPath = `${FileSystem.cacheDirectory}${fileName}`;
+      const downloaded = await FileSystem.downloadAsync(activeItem.uri, targetPath);
+      await MediaLibrary.saveToLibraryAsync(downloaded.uri);
+      Alert.alert('已保存', activeItem.type === 'video' ? '视频已保存到相册' : '图片已保存到相册');
+    } catch {
+      Alert.alert('保存失败', '当前资源无法下载，请稍后重试');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderItem = ({ item }) => {
+    if (item.type === 'video') {
+      return <VideoSlide uri={item.uri} />;
+    }
+    return <ImageSlide uri={item.uri} />;
   };
 
   return (
@@ -77,23 +169,23 @@ export default function MediaViewerScreen({ navigation, route }) {
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.counter}>{items.length ? `${index + 1} / ${items.length}` : ''}</Text>
-        <View style={styles.headerBtn} />
+        <TouchableOpacity style={styles.headerBtn} onPress={handleSaveAsset} disabled={saving || !activeItem?.uri}>
+          <Ionicons name="download-outline" size={22} color={saving ? 'rgba(255,255,255,0.4)' : '#fff'} />
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.content}>
-        {activeItem?.type === 'video' ? (
-          <VideoView
-            key={activeItem.uri}
-            player={player}
-            style={styles.video}
-            nativeControls
-            contentFit="contain"
-            surfaceType="textureView"
-          />
-        ) : activeItem?.uri ? (
-          <Image key={activeItem.uri} source={{ uri: activeItem.uri }} style={styles.image} resizeMode="contain" />
-        ) : null}
-      </View>
+      <FlatList
+        ref={flatListRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        data={items}
+        keyExtractor={(item, itemIndex) => `${item.uri}_${itemIndex}`}
+        renderItem={renderItem}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        getItemLayout={(_, itemIndex) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * itemIndex, index: itemIndex })}
+      />
 
       {items.length > 1 && (
         <View style={styles.bottomBar}>
@@ -137,20 +229,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  content: {
-    flex: 1,
+  slide: {
+    width: SCREEN_WIDTH,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 20,
+    paddingHorizontal: 12,
+    paddingBottom: 18,
   },
+  zoomWrap: { width: '100%', height: '100%' },
+  zoomContent: { flexGrow: 1, justifyContent: 'center' },
   image: {
     width: '100%',
     height: '100%',
   },
   video: {
     width: '100%',
-    height: '72%',
+    height: '74%',
     backgroundColor: '#111',
     borderRadius: 16,
   },

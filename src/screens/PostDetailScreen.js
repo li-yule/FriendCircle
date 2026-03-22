@@ -1,0 +1,293 @@
+import React, { useMemo, useState } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  Image, TextInput, Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useApp } from '../context/AppContext';
+import { Avatar } from '../components/Avatar';
+import { formatTime, generateId } from '../utils/helpers';
+import VideoPreviewCard from '../components/VideoPreviewCard';
+
+export default function PostDetailScreen({ navigation, route }) {
+  const { state, dispatch } = useApp();
+  const { posts, users, currentUser } = state;
+  const postId = route.params?.postId;
+  const passedPost = route.params?.post;
+  const livePost = posts.find(item => item.id === postId) || passedPost;
+  const [commentText, setCommentText] = useState('');
+  const [replyTarget, setReplyTarget] = useState(null);
+
+  const getUserById = id => users.find(user => user.id === id) || { name: '未知用户', avatarColor: '#ccc' };
+
+  const mediaItems = useMemo(() => {
+    if (!livePost) return [];
+    return [
+      ...((livePost.images || []).map(uri => ({ type: 'image', uri }))),
+      ...((livePost.videos || []).map(uri => ({ type: 'video', uri }))),
+    ];
+  }, [livePost]);
+
+  if (!livePost) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.emptyText}>动态不存在或已删除</Text>
+      </View>
+    );
+  }
+
+  const author = getUserById(livePost.userId);
+  const liked = (livePost.likes || []).includes(currentUser.id);
+
+  const openMediaViewer = (index) => {
+    if (!mediaItems.length) return;
+    navigation.navigate('MediaViewer', {
+      items: mediaItems,
+      initialIndex: index,
+      sourceTab: 'FeedTab',
+    });
+  };
+
+  const handleLike = () => {
+    dispatch({ type: 'LIKE_POST', payload: { postId: livePost.id, userId: currentUser.id } });
+  };
+
+  const handleComment = async () => {
+    const text = commentText.trim();
+    if (!text) return;
+    const result = await dispatch({
+      type: 'ADD_COMMENT',
+      payload: {
+        postId: livePost.id,
+        comment: {
+          id: generateId(),
+          userId: currentUser.id,
+          replyToUserId: replyTarget?.id || '',
+          replyToUserName: replyTarget?.name || '',
+          text,
+          createdAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    if (!result?.ok) {
+      Alert.alert('评论失败', result?.error || '请稍后重试');
+      return;
+    }
+    setCommentText('');
+    setReplyTarget(null);
+  };
+
+  const handleDelete = () => {
+    if (livePost.userId !== currentUser.id) return;
+    Alert.alert('删除动态', '确认删除这条动态吗？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: async () => {
+          const result = await dispatch({ type: 'DELETE_POST', payload: livePost.id });
+          if (!result?.ok) {
+            Alert.alert('删除失败', result?.error || '请稍后重试');
+            return;
+          }
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>动态详情</Text>
+        {livePost.userId === currentUser.id ? (
+          <TouchableOpacity onPress={handleDelete}>
+            <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
+          </TouchableOpacity>
+        ) : <View style={{ width: 22 }} />}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <View style={styles.authorRow}>
+          <Avatar user={author} size={40} />
+          <View style={styles.authorInfo}>
+            <Text style={styles.authorName}>{author.name}</Text>
+            <Text style={styles.timeText}>{formatTime(livePost.createdAt)}</Text>
+          </View>
+        </View>
+
+        {!!livePost.text && <Text style={styles.contentText}>{livePost.text}</Text>}
+
+        {(livePost.images || []).length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaRow}>
+            {(livePost.images || []).map((uri, index) => (
+              <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openMediaViewer(index)}>
+                <Image source={{ uri }} style={styles.image} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {(livePost.videos || []).length > 0 && (
+          <View style={styles.videoList}>
+            {(livePost.videos || []).map((uri, index) => (
+              <View key={`${uri}_${index}`} style={styles.videoWrap}>
+                <VideoPreviewCard uri={uri} style={styles.videoPreview} />
+                <TouchableOpacity
+                  style={styles.videoOpenBtn}
+                  onPress={() => openMediaViewer((livePost.images || []).length + index)}
+                >
+                  <Ionicons name="expand-outline" size={14} color="#fff" />
+                  <Text style={styles.videoOpenText}>查看</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.actionBtn} onPress={handleLike}>
+            <Ionicons name={liked ? 'heart' : 'heart-outline'} size={20} color={liked ? '#FF6B6B' : '#666'} />
+            <Text style={[styles.actionText, liked && { color: '#FF6B6B' }]}>{(livePost.likes || []).length}</Text>
+          </TouchableOpacity>
+          <View style={styles.actionBtn}>
+            <Ionicons name="chatbubble-outline" size={18} color="#666" />
+            <Text style={styles.actionText}>{(livePost.comments || []).length}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.commentTitle}>评论</Text>
+        {(livePost.comments || []).map(comment => {
+          const commentUser = getUserById(comment.userId);
+          const replyingName = comment.replyToUserName || getUserById(comment.replyToUserId)?.name;
+          return (
+            <TouchableOpacity
+              key={comment.id}
+              style={styles.commentItem}
+              activeOpacity={0.85}
+              onPress={() => setReplyTarget({ id: commentUser.id, name: commentUser.name })}
+            >
+              <Avatar user={commentUser} size={30} />
+              <View style={styles.commentBubble}>
+                <Text style={styles.commentName}>{commentUser.name}</Text>
+                {!!replyingName && <Text style={styles.replyHint}>回复 {replyingName}</Text>}
+                <Text style={styles.commentText}>{comment.text}</Text>
+                <Text style={styles.commentTime}>{formatTime(comment.createdAt)}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <View style={styles.inputBar}>
+        {replyTarget ? (
+          <View style={styles.replyTarget}>
+            <Text style={styles.replyTargetText}>回复 {replyTarget.name}</Text>
+            <TouchableOpacity onPress={() => setReplyTarget(null)}>
+              <Ionicons name="close-circle" size={16} color="#999" />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            placeholder={replyTarget ? `回复 ${replyTarget.name}...` : '写评论...'}
+            value={commentText}
+            onChangeText={setCommentText}
+            onSubmitEditing={handleComment}
+            returnKeyType="send"
+          />
+          <TouchableOpacity style={styles.sendBtn} onPress={handleComment}>
+            <Ionicons name="send" size={18} color="#4ECDC4" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    paddingTop: 50,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  headerTitle: { fontSize: 17, fontWeight: '600', color: '#333' },
+  body: { padding: 14, gap: 12, paddingBottom: 110 },
+  authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  authorInfo: { flex: 1 },
+  authorName: { fontSize: 15, fontWeight: '700', color: '#333' },
+  timeText: { marginTop: 2, fontSize: 12, color: '#999' },
+  contentText: { fontSize: 16, color: '#333', lineHeight: 24, backgroundColor: '#fff', borderRadius: 14, padding: 14 },
+  mediaRow: { marginTop: 4 },
+  image: { width: 180, height: 180, borderRadius: 12, marginRight: 10 },
+  videoList: { gap: 10 },
+  videoWrap: { position: 'relative' },
+  videoPreview: { width: '100%', height: 220, borderRadius: 14 },
+  videoOpenBtn: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.56)',
+  },
+  videoOpenText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  actionRow: { flexDirection: 'row', gap: 18, alignItems: 'center', paddingHorizontal: 4 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  actionText: { color: '#666', fontSize: 13 },
+  commentTitle: { fontSize: 15, fontWeight: '700', color: '#333', marginTop: 8 },
+  commentItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  commentBubble: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 10 },
+  commentName: { fontSize: 13, fontWeight: '700', color: '#4ECDC4' },
+  replyHint: { fontSize: 11, color: '#999', marginTop: 2 },
+  commentText: { fontSize: 14, color: '#444', marginTop: 2, lineHeight: 20 },
+  commentTime: { fontSize: 11, color: '#bbb', marginTop: 5 },
+  inputBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#ECECEC',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 20,
+    gap: 6,
+  },
+  replyTarget: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  replyTargetText: { color: '#999', fontSize: 12 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 18,
+    backgroundColor: '#F6F6F6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  input: { flex: 1, fontSize: 14, color: '#333' },
+  sendBtn: { padding: 4 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  emptyText: { color: '#888', fontSize: 15 },
+});

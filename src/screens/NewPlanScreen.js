@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, Alert, KeyboardAvoidingView, Platform,
+  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -16,6 +16,7 @@ export default function NewPlanScreen({ navigation }) {
   const [date, setDate] = useState(getTodayStr());
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [tasks, setTasks] = useState([{ id: generateId(), text: '', done: false, reminderTime: '' }]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   function getTodayStr() {
     const d = new Date();
@@ -36,6 +37,8 @@ export default function NewPlanScreen({ navigation }) {
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     const trimmedTitle = title.trim();
     const validTasks = tasks.filter(t => t.text.trim());
     if (!trimmedTitle && validTasks.length === 0) {
@@ -64,6 +67,7 @@ export default function NewPlanScreen({ navigation }) {
       ? validTasks
       : [{ id: generateId(), text: trimmedTitle, done: false, reminderTime: '' }];
 
+    setIsSubmitting(true);
     const result = await dispatch({
       type: 'ADD_PLAN',
       payload: {
@@ -76,9 +80,11 @@ export default function NewPlanScreen({ navigation }) {
       },
     });
     if (!result?.ok) {
+      setIsSubmitting(false);
       Alert.alert('发布失败', result?.error || '请稍后重试');
       return;
     }
+    setIsSubmitting(false);
     navigation.goBack();
   };
 
@@ -89,8 +95,8 @@ export default function NewPlanScreen({ navigation }) {
           <Text style={styles.cancel}>取消</Text>
         </TouchableOpacity>
         <Text style={styles.title}>新建规划</Text>
-        <TouchableOpacity style={styles.sendBtn} onPress={handleSubmit}>
-          <Text style={styles.sendText}>发布</Text>
+        <TouchableOpacity style={[styles.sendBtn, isSubmitting && styles.sendBtnDisabled]} onPress={handleSubmit} disabled={isSubmitting}>
+          {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.sendText}>发布</Text>}
         </TouchableOpacity>
       </View>
 
@@ -185,7 +191,8 @@ const styles = StyleSheet.create({
   },
   cancel: { fontSize: 16, color: '#666' },
   title: { fontSize: 17, fontWeight: '600', color: '#333' },
-  sendBtn: { backgroundColor: '#FF6B6B', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20 },
+  sendBtn: { backgroundColor: '#FF6B6B', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, minWidth: 62, alignItems: 'center' },
+  sendBtnDisabled: { opacity: 0.72 },
   sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   body: { padding: 16, gap: 20 },
   fieldGroup: { gap: 8 },

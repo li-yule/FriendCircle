@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, Alert, KeyboardAvoidingView, Platform, Image,
+  ScrollView, Alert, KeyboardAvoidingView, Platform, Image, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -34,6 +34,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
   const [tagInput, setTagInput] = useState('');
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -209,6 +210,8 @@ export default function NewKnowledgeScreen({ navigation, route }) {
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     const trimmedWrongAnswer = wrongAnswer.trim();
     const trimmedCorrectAnswer = correctAnswer.trim();
     const trimmedSummary = summary.trim();
@@ -223,6 +226,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
     }
 
     let result;
+    setIsSubmitting(true);
     if (existing) {
       result = await dispatch({
         type: 'UPDATE_KNOWLEDGE',
@@ -267,9 +271,11 @@ export default function NewKnowledgeScreen({ navigation, route }) {
       });
     }
     if (!result?.ok) {
+      setIsSubmitting(false);
       Alert.alert(existing ? '更新失败' : '保存失败', result?.error || '请稍后重试');
       return;
     }
+    setIsSubmitting(false);
     navigation.goBack();
   };
 
@@ -280,8 +286,8 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           <Text style={styles.cancel}>取消</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{existing ? '编辑错题' : '添加错题'}</Text>
-        <TouchableOpacity style={styles.sendBtn} onPress={handleSubmit}>
-          <Text style={styles.sendText}>保存</Text>
+        <TouchableOpacity style={[styles.sendBtn, isSubmitting && styles.sendBtnDisabled]} onPress={handleSubmit} disabled={isSubmitting}>
+          {isSubmitting ? <ActivityIndicator size="small" color="#666" /> : <Text style={styles.sendText}>保存</Text>}
         </TouchableOpacity>
       </View>
 
@@ -553,7 +559,8 @@ const styles = StyleSheet.create({
   },
   cancel: { fontSize: 16, color: '#666' },
   title: { fontSize: 17, fontWeight: '600', color: '#333' },
-  sendBtn: { backgroundColor: '#FFE66D', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20 },
+  sendBtn: { backgroundColor: '#FFE66D', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, minWidth: 60, alignItems: 'center' },
+  sendBtnDisabled: { opacity: 0.72 },
   sendText: { color: '#666', fontWeight: '600', fontSize: 14 },
   body: { padding: 16, gap: 20 },
   fieldGroup: { gap: 8 },

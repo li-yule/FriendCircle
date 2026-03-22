@@ -14,6 +14,7 @@ export default function FeedScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { posts, currentUser, users } = state;
   const [commentInput, setCommentInput] = useState({});
+  const [replyTarget, setReplyTarget] = useState({});
   const [expandedComments, setExpandedComments] = useState({});
   const [timeFilter, setTimeFilter] = useState('all'); // 'all' | 'today' | 'date'
   const [selectedDate, setSelectedDate] = useState('');
@@ -60,6 +61,7 @@ export default function FeedScreen({ navigation }) {
   const handleAddComment = (postId) => {
     const text = commentInput[postId]?.trim();
     if (!text) return;
+    const replyTo = replyTarget[postId] || null;
     dispatch({
       type: 'ADD_COMMENT',
       payload: {
@@ -67,12 +69,19 @@ export default function FeedScreen({ navigation }) {
         comment: {
           id: generateId(),
           userId: currentUser.id,
+          replyToUserId: replyTo?.id || '',
+          replyToUserName: replyTo?.name || '',
           text,
           createdAt: new Date().toISOString(),
         },
       },
     });
     setCommentInput(prev => ({ ...prev, [postId]: '' }));
+    setReplyTarget(prev => ({ ...prev, [postId]: null }));
+  };
+
+  const openPostDetail = (postId) => {
+    navigation.navigate('PostDetail', { postId });
   };
 
   const handleDeletePost = (postId, authorId) => {
@@ -152,6 +161,10 @@ export default function FeedScreen({ navigation }) {
               {(item.comments || []).length > 0 ? (item.comments || []).length : ''}
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => openPostDetail(item.id)}>
+            <Ionicons name="document-text-outline" size={20} color="#666" />
+            <Text style={styles.actionText}>详情</Text>
+          </TouchableOpacity>
         </View>
 
         {/* 评论展示 */}
@@ -159,21 +172,36 @@ export default function FeedScreen({ navigation }) {
           <View style={styles.commentsSection}>
             {(item.comments || []).map(c => {
               const cu = getUserById(c.userId);
+              const replyingName = c.replyToUserName || getUserById(c.replyToUserId)?.name;
               return (
-                <View key={c.id} style={styles.commentItem}>
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.commentItem}
+                  activeOpacity={0.82}
+                  onPress={() => setReplyTarget(prev => ({ ...prev, [item.id]: { id: cu.id, name: cu.name } }))}
+                >
                   <Avatar user={cu} size={28} />
                   <View style={styles.commentBubble}>
                     <Text style={styles.commentName}>{cu.name}</Text>
+                    {!!replyingName && <Text style={styles.replyingHint}>回复 {replyingName}</Text>}
                     <Text style={styles.commentText}>{c.text}</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
+            {!!replyTarget[item.id] && (
+              <View style={styles.replyTipRow}>
+                <Text style={styles.replyTipText}>正在回复 {replyTarget[item.id].name}</Text>
+                <TouchableOpacity onPress={() => setReplyTarget(prev => ({ ...prev, [item.id]: null }))}>
+                  <Ionicons name="close-circle" size={16} color="#999" />
+                </TouchableOpacity>
+              </View>
+            )}
             <View style={styles.commentInputRow}>
               <Avatar user={currentUser} size={28} />
               <TextInput
                 style={styles.commentInput}
-                placeholder="写评论..."
+                placeholder={replyTarget[item.id] ? `回复 ${replyTarget[item.id].name}...` : '写评论...'}
                 value={commentInput[item.id] || ''}
                 onChangeText={val => setCommentInput(prev => ({ ...prev, [item.id]: val }))}
                 onSubmitEditing={() => handleAddComment(item.id)}
@@ -330,7 +358,15 @@ const styles = StyleSheet.create({
   commentItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   commentBubble: { flex: 1, backgroundColor: '#F8F8F8', borderRadius: 10, padding: 8 },
   commentName: { fontSize: 12, fontWeight: '600', color: '#4ECDC4', marginBottom: 2 },
+  replyingHint: { fontSize: 11, color: '#999', marginBottom: 2 },
   commentText: { fontSize: 13, color: '#444' },
+  replyTipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 6,
+  },
+  replyTipText: { color: '#999', fontSize: 12 },
   commentInputRow: {
     flexDirection: 'row',
     alignItems: 'center',

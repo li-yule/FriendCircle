@@ -19,6 +19,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   const liveItem = state.knowledge.find(k => k.id === item?.id) || item;
 
   const [commentText, setCommentText] = useState('');
+  const [replyTarget, setReplyTarget] = useState(null);
   const [commentImages, setCommentImages] = useState([]);
   const [commentAudioFiles, setCommentAudioFiles] = useState([]);
   const [recording, setRecording] = useState(null);
@@ -164,6 +165,8 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         comment: {
           id: generateId(),
           userId: currentUser.id,
+          replyToUserId: replyTarget?.id || '',
+          replyToUserName: replyTarget?.name || '',
           text: commentText.trim(),
           images: commentImages,
           audioFiles: commentAudioFiles,
@@ -178,6 +181,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     setCommentText('');
     setCommentImages([]);
     setCommentAudioFiles([]);
+    setReplyTarget(null);
   };
 
   const handleDelete = () => {
@@ -366,11 +370,18 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         <Text style={styles.commentTitle}>讨论 ({(liveItem.comments || []).length})</Text>
         {(liveItem.comments || []).map(c => {
           const cu = users.find(u => u.id === c.userId) || { name: '未知', avatarColor: '#ccc' };
+          const replyingName = c.replyToUserName || (users.find(u => u.id === c.replyToUserId)?.name || '');
           return (
-            <View key={c.id} style={styles.commentItem}>
+            <TouchableOpacity
+              key={c.id}
+              style={styles.commentItem}
+              activeOpacity={0.85}
+              onPress={() => setReplyTarget({ id: cu.id, name: cu.name })}
+            >
               <Avatar user={cu} size={32} />
               <View style={styles.commentBubble}>
                 <Text style={styles.commentName}>{cu.name}</Text>
+                {!!replyingName && <Text style={styles.replyHint}>回复 {replyingName}</Text>}
                 {!!c.text && <Text style={styles.commentTextContent}>{c.text}</Text>}
                 {c.images?.length > 0 && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.commentMediaScroll}>
@@ -400,7 +411,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                 )}
                 <Text style={styles.commentTime}>{formatTime(c.createdAt)}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </ScrollView>
@@ -409,9 +420,17 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
       <View style={styles.commentInputBar}>
         <Avatar user={currentUser} size={32} />
         <View style={styles.commentComposer}>
+          {replyTarget ? (
+            <View style={styles.replyTargetRow}>
+              <Text style={styles.replyTargetText}>回复 {replyTarget.name}</Text>
+              <TouchableOpacity onPress={() => setReplyTarget(null)}>
+                <Ionicons name="close-circle" size={16} color="#999" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
           <TextInput
             style={styles.commentInput}
-            placeholder="写讨论，也可以发图片或语音..."
+            placeholder={replyTarget ? `回复 ${replyTarget.name}...` : '写讨论，也可以发图片或语音...'}
             value={commentText}
             onChangeText={setCommentText}
             onSubmitEditing={handleComment}
@@ -523,6 +542,7 @@ const styles = StyleSheet.create({
   commentItem: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   commentBubble: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 12 },
   commentName: { fontSize: 13, fontWeight: '600', color: '#4ECDC4', marginBottom: 4 },
+  replyHint: { fontSize: 11, color: '#999', marginBottom: 3 },
   commentTextContent: { fontSize: 14, color: '#444', lineHeight: 20 },
   commentTime: { fontSize: 11, color: '#bbb', marginTop: 4 },
   commentInputBar: {
@@ -549,6 +569,13 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 8,
   },
+  replyTargetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  replyTargetText: { color: '#999', fontSize: 12 },
   commentToolbar: {
     flexDirection: 'row',
     alignItems: 'center',

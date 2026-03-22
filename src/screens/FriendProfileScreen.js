@@ -75,7 +75,12 @@ export default function FriendProfileScreen({ navigation, route }) {
             <Text style={styles.emptyText}>TA 还没有发布动态</Text>
           ) : (
             userPosts.map(item => (
-              <View key={item.id} style={styles.postCard}>
+              <TouchableOpacity
+                key={item.id}
+                style={styles.postCard}
+                activeOpacity={0.9}
+                onPress={() => navigation.navigate('PostDetail', { postId: item.id, post: item })}
+              >
                 {item.images && item.images.length > 0 ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                     {item.images.map((uri, i) => (
@@ -85,7 +90,7 @@ export default function FriendProfileScreen({ navigation, route }) {
                 ) : null}
                 {item.text ? <Text style={styles.postText} numberOfLines={3}>{item.text}</Text> : null}
                 <Text style={styles.postTime}>{formatTime(item.createdAt)}</Text>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
