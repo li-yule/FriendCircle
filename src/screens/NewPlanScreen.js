@@ -22,6 +22,13 @@ export default function NewPlanScreen({ navigation }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  const setDateByOffset = (offsetDays) => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + offsetDays);
+    setDate(toDateKey(d));
+  };
+
   const handleSubmit = async () => {
     if (isSubmitting) return;
 
@@ -82,28 +89,54 @@ export default function NewPlanScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {/* 标题 */}
-        <View style={styles.fieldGroup}>
+        <View style={styles.heroCard}>
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="sparkles-outline" size={18} color="#FF6B6B" />
+          </View>
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroTitle}>创建一个轻量规划</Text>
+            <Text style={styles.heroDesc}>写下标题，选择日期，发布后会自动生成同名任务。</Text>
+          </View>
+        </View>
+
+        <View style={styles.fieldCard}>
           <Text style={styles.label}>规划标题</Text>
           <TextInput
             style={styles.input}
-            placeholder="给这次规划起个名字..."
+            placeholder="例如：数学错题复盘"
             value={title}
             onChangeText={setTitle}
+            maxLength={40}
           />
+          <Text style={styles.counterText}>{title.trim().length}/40</Text>
         </View>
 
-        <View style={styles.fieldGroup}>
+        <View style={styles.fieldCard}>
           <Text style={styles.label}>规划日期</Text>
           <TouchableOpacity style={styles.datePickerBtn} onPress={() => setDatePickerVisible(true)}>
-            <Ionicons name="calendar-outline" size={16} color="#FF6B6B" />
-            <Text style={styles.datePickerText}>{formatDateKey(date)}</Text>
+            <View style={styles.dateLeft}>
+              <Ionicons name="calendar-outline" size={16} color="#FF6B6B" />
+              <Text style={styles.datePickerText}>{formatDateKey(date)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#FF9F9F" />
           </TouchableOpacity>
+
+          <View style={styles.quickDateRow}>
+            <TouchableOpacity style={styles.quickDateChip} onPress={() => setDateByOffset(0)}>
+              <Text style={styles.quickDateText}>今天</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickDateChip} onPress={() => setDateByOffset(1)}>
+              <Text style={styles.quickDateText}>明天</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickDateChip} onPress={() => setDateByOffset(7)}>
+              <Text style={styles.quickDateText}>一周后</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.todayTip}>
-          <Ionicons name="calendar-outline" size={16} color="#FF6B6B" />
-          <Text style={styles.todayTipText}>可创建今天和未来的规划。只需填写标题即可发布。</Text>
+          <Ionicons name="information-circle-outline" size={16} color="#FF6B6B" />
+          <Text style={styles.todayTipText}>仅支持今天及未来日期。发布后可在“打卡”页继续补充执行细节。</Text>
         </View>
       </ScrollView>
 
@@ -120,11 +153,12 @@ export default function NewPlanScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#F6F7FB' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#fff',
     paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 12,
@@ -136,8 +170,36 @@ const styles = StyleSheet.create({
   sendBtn: { backgroundColor: '#FF6B6B', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, minWidth: 62, alignItems: 'center' },
   sendBtnDisabled: { opacity: 0.72 },
   sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-  body: { padding: 16, gap: 20 },
-  fieldGroup: { gap: 8 },
+  body: { padding: 16, gap: 14, paddingBottom: 32 },
+  heroCard: {
+    backgroundColor: '#FFF7F7',
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#FFE7E7',
+  },
+  heroIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFECEC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroTextWrap: { flex: 1, gap: 3 },
+  heroTitle: { fontSize: 14, fontWeight: '700', color: '#D95555' },
+  heroDesc: { fontSize: 12, color: '#A66D6D', lineHeight: 18 },
+  fieldCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#EFEFEF',
+  },
   label: { fontSize: 14, fontWeight: '600', color: '#333' },
   input: {
     borderWidth: 1,
@@ -147,12 +209,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     color: '#333',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FAFAFA'
   },
+  counterText: { alignSelf: 'flex-end', marginTop: -2, fontSize: 12, color: '#B3B3B3' },
   datePickerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: '#FFD5D5',
     borderRadius: 12,
@@ -160,14 +223,27 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: '#FFF7F7',
   },
+  dateLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   datePickerText: { color: '#FF6B6B', fontWeight: '600', fontSize: 14 },
+  quickDateRow: { flexDirection: 'row', gap: 8 },
+  quickDateChip: {
+    backgroundColor: '#FFF3F3',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#FFE3E3',
+  },
+  quickDateText: { color: '#E37272', fontSize: 12, fontWeight: '600' },
   todayTip: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
     backgroundColor: '#FFF5F5',
-    padding: 12,
-    borderRadius: 10,
+    padding: 13,
+    borderRadius: 12,
     alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#FFE8E8',
   },
   todayTipText: { flex: 1, fontSize: 13, color: '#FF6B6B', lineHeight: 18 },
 });

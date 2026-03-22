@@ -10,13 +10,20 @@ import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import { generateId } from '../utils/helpers';
 
+const COMMON_EMOJIS = ['😀', '😂', '😍', '🥹', '😭', '😅', '👍', '👏', '🎉', '❤️', '🔥', '✨'];
+
 export default function NewPostScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { currentUser } = state;
   const [text, setText] = useState('');
   const [images, setImages] = useState([]);
   const [videos, setVideos] = useState([]);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const appendEmoji = (emoji) => {
+    setText(prev => `${prev}${emoji}`.slice(0, 1000));
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -148,6 +155,24 @@ export default function NewPostScreen({ navigation }) {
           maxLength={1000}
         />
 
+        <View style={styles.composerToolbar}>
+          <TouchableOpacity style={styles.emojiToggleBtn} onPress={() => setShowEmojiPicker(prev => !prev)}>
+            <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={20} color="#4ECDC4" />
+            <Text style={styles.emojiToggleText}>表情</Text>
+          </TouchableOpacity>
+          <Text style={styles.textCount}>{text.length}/1000</Text>
+        </View>
+
+        {showEmojiPicker ? (
+          <View style={styles.emojiPanel}>
+            {COMMON_EMOJIS.map(emoji => (
+              <TouchableOpacity key={emoji} style={styles.emojiItem} onPress={() => appendEmoji(emoji)}>
+                <Text style={styles.emojiText}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+
         {/* 图片预览 */}
         {images.length > 0 && (
           <View style={styles.imageGrid}>
@@ -238,8 +263,37 @@ const styles = StyleSheet.create({
     color: '#333',
     minHeight: 150,
     lineHeight: 24,
-    marginBottom: 16,
+    marginBottom: 8,
   },
+  composerToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  emojiToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  emojiToggleText: { color: '#4ECDC4', fontSize: 13, fontWeight: '600' },
+  textCount: { fontSize: 12, color: '#B3B3B3' },
+  emojiPanel: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E9F5F4',
+    backgroundColor: '#F7FCFB',
+    marginBottom: 14,
+  },
+  emojiItem: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  emojiText: { fontSize: 19 },
   imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   imageWrapper: { position: 'relative' },
   previewImage: { width: 100, height: 100, borderRadius: 8 },

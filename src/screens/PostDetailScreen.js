@@ -9,6 +9,8 @@ import { Avatar } from '../components/Avatar';
 import { formatTime, generateId } from '../utils/helpers';
 import VideoPreviewCard from '../components/VideoPreviewCard';
 
+const COMMON_EMOJIS = ['😀', '😂', '😍', '🥹', '😭', '😅', '👍', '👏', '🎉', '❤️', '🔥', '✨'];
+
 export default function PostDetailScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
   const { posts, users, currentUser } = state;
@@ -17,6 +19,7 @@ export default function PostDetailScreen({ navigation, route }) {
   const livePost = posts.find(item => item.id === postId) || passedPost;
   const [commentText, setCommentText] = useState('');
   const [replyTarget, setReplyTarget] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const getUserById = id => users.find(user => user.id === id) || { name: '未知用户', avatarColor: '#ccc' };
 
@@ -76,6 +79,7 @@ export default function PostDetailScreen({ navigation, route }) {
     }
     setCommentText('');
     setReplyTarget(null);
+    setShowEmojiPicker(false);
   };
 
   const handleDelete = () => {
@@ -95,6 +99,10 @@ export default function PostDetailScreen({ navigation, route }) {
         },
       },
     ]);
+  };
+
+  const appendEmoji = (emoji) => {
+    setCommentText(prev => `${prev}${emoji}`.slice(0, 300));
   };
 
   return (
@@ -195,6 +203,9 @@ export default function PostDetailScreen({ navigation, route }) {
           </View>
         ) : null}
         <View style={styles.inputRow}>
+          <TouchableOpacity style={styles.emojiBtn} onPress={() => setShowEmojiPicker(prev => !prev)}>
+            <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={18} color="#4ECDC4" />
+          </TouchableOpacity>
           <TextInput
             style={styles.input}
             placeholder={replyTarget ? `回复 ${replyTarget.name}...` : '写评论...'}
@@ -202,11 +213,21 @@ export default function PostDetailScreen({ navigation, route }) {
             onChangeText={setCommentText}
             onSubmitEditing={handleComment}
             returnKeyType="send"
+            maxLength={300}
           />
           <TouchableOpacity style={styles.sendBtn} onPress={handleComment}>
             <Ionicons name="send" size={18} color="#4ECDC4" />
           </TouchableOpacity>
         </View>
+        {showEmojiPicker ? (
+          <View style={styles.emojiPanel}>
+            {COMMON_EMOJIS.map(emoji => (
+              <TouchableOpacity key={emoji} style={styles.emojiItem} onPress={() => appendEmoji(emoji)}>
+                <Text style={styles.emojiText}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -276,6 +297,22 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   input: { flex: 1, fontSize: 14, color: '#333' },
+  emojiBtn: { paddingVertical: 2, paddingRight: 2 },
+  emojiPanel: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingTop: 6,
+  },
+  emojiItem: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F7FCFB',
+  },
+  emojiText: { fontSize: 18 },
   sendBtn: { padding: 4 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
   emptyText: { color: '#888', fontSize: 15 },
