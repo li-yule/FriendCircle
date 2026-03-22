@@ -210,6 +210,21 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     ]);
   };
 
+  const handleToggleType = async () => {
+    if (liveItem.userId !== currentUser.id) return;
+    const nextType = (liveItem.type || 'knowledge_point') === 'error_item' ? 'knowledge_point' : 'error_item';
+    const result = await dispatch({
+      type: 'UPDATE_KNOWLEDGE',
+      payload: {
+        id: liveItem.id,
+        type: nextType,
+      },
+    });
+    if (!result?.ok) {
+      Alert.alert('切换失败', result?.error || '请稍后重试');
+    }
+  };
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}>
       {/* 顶部导航 */}
@@ -217,9 +232,25 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>错题详情</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>错题详情</Text>
+          <View style={[
+            styles.headerTypeBadge,
+            (liveItem.type || 'knowledge_point') === 'error_item' ? styles.headerTypeBadgeError : styles.headerTypeBadgeKnowledge,
+          ]}>
+            <Text style={[
+              styles.headerTypeBadgeText,
+              (liveItem.type || 'knowledge_point') === 'error_item' ? styles.headerTypeTextError : styles.headerTypeTextKnowledge,
+            ]}>
+              {(liveItem.type || 'knowledge_point') === 'error_item' ? '错误项' : '学习要点'}
+            </Text>
+          </View>
+        </View>
         {liveItem.userId === currentUser.id && (
           <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleToggleType} style={styles.typeSwitchBtn}>
+              <Ionicons name="swap-horizontal-outline" size={18} color="#666" />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => navigation.navigate('NewKnowledge', { item: liveItem })}>
               <Ionicons name="create-outline" size={22} color="#4ECDC4" />
             </TouchableOpacity>
@@ -508,8 +539,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
+  headerCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
   headerTitle: { fontSize: 17, fontWeight: '600', color: '#333' },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
+  headerTypeBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  headerTypeBadgeKnowledge: { backgroundColor: '#4ECDC422' },
+  headerTypeBadgeError: { backgroundColor: '#FF6B6B22' },
+  headerTypeBadgeText: { fontSize: 11, fontWeight: '600' },
+  headerTypeTextKnowledge: { color: '#4ECDC4' },
+  headerTypeTextError: { color: '#FF6B6B' },
+  typeSwitchBtn: { marginRight: 10, padding: 2 },
   body: { padding: 16, gap: 16, paddingBottom: 80 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   subjectBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: '#EAF7F6' },
