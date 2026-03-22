@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "FriendCircle",
+    "slug": "friendcircle",
+    "scheme": "friendcircle",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.friendcircle.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "用于拍摄动态照片",
+        "NSPhotoLibraryUsageDescription": "用于选择相册图片",
+        "NSMicrophoneUsageDescription": "用于语音输入与录音"
+      }
+    },
+    "android": {
+      "package": "com.friendcircle.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-video"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c76eb2df-3fb0-4286-b682-6ceb18fef245"
+      }
+    },
+    "owner": "liyule"
+  }
+}
