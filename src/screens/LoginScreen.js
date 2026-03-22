@@ -7,7 +7,7 @@ function normalizeAccount(value) {
 }
 
 export default function LoginScreen({ navigation }) {
-  const { state, dispatch, isCloudEnabled } = useApp();
+  const { dispatch, isCloudEnabled } = useApp();
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
 
@@ -18,17 +18,6 @@ export default function LoginScreen({ navigation }) {
     if (!accountValue || !passwordValue) {
       Alert.alert('提示', '请输入账号和密码');
       return;
-    }
-
-    if (!isCloudEnabled) {
-      const matched = state.users.find(
-        user => normalizeAccount(user.account || '') === accountValue && (user.password || '') === passwordValue
-      );
-
-      if (!matched) {
-        Alert.alert('登录失败', '账号或密码不正确');
-        return;
-      }
     }
 
     const result = await dispatch({
@@ -71,7 +60,7 @@ export default function LoginScreen({ navigation }) {
         </TouchableOpacity>
 
         <View style={styles.demoBox}>
-          <Text style={styles.demoText}>{isCloudEnabled ? '当前已启用云端账号，请使用你注册过的账号登录' : '测试账号：xiaoming / 123456'}</Text>
+          <Text style={styles.demoText}>{isCloudEnabled ? '当前已启用云端账号，请使用你注册过的账号登录' : '当前未连接云端，请先配置 Supabase 环境变量'}</Text>
         </View>
       </View>
     </View>

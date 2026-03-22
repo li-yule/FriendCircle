@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useReducer, useRef } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { DEFAULT_SUBJECTS, INITIAL_USERS } from '../data/initialData';
@@ -7,137 +6,93 @@ import { generateId } from '../utils/helpers';
 import { isSupabaseConfigured, mediaBucketName, supabase } from '../lib/supabase';
 
 const AppContext = createContext(null);
-const STORAGE_KEY = '@FriendCircle_state_v2';
 const DEFAULT_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF85A1', '#87CEEB', '#95E1D3'];
+const CLOUD_CONFIG_REQUIRED_MESSAGE = '当前版本仅支持云端存储，请先配置 Supabase 环境变量后再使用。';
 
 const initialState = {
   currentUser: null,
-  users: INITIAL_USERS,
-  posts: [],
-  plans: [],
-  knowledge: [],
-  notifications: [],
-  loaded: false,
-};
-
-function ensureArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function normalizeAccount(value) {
-  return (value || '').trim().toLowerCase();
-}
-
-function toUniqueStrings(value) {
-  const result = [];
-  const seen = new Set();
-
-  ensureArray(value).forEach(item => {
-    if (typeof item !== 'string') return;
-    const normalized = item.trim();
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
-    result.push(normalized);
-  });
-
-  return result;
-}
-
-function pickAvatarColor(seed = '') {
-  const code = String(seed).split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return DEFAULT_COLORS[code % DEFAULT_COLORS.length];
-}
-
-function normalizeUsers(users) {
-  return ensureArray(users).map(user => {
-    const subjects = toUniqueStrings(user?.subjects);
-    return {
-      ...user,
-      friends: toUniqueStrings(user?.friends),
-      subjects: subjects.length > 0 ? subjects : [...DEFAULT_SUBJECTS.slice(0, 2)],
-      account: normalizeAccount(user?.account || user?.id),
-      avatarColor: user?.avatarColor || user?.avatar_color || pickAvatarColor(user?.id),
-      bio: user?.bio || '',
-      avatar: user?.avatar || null,
-      password: user?.password || '',
-    };
-  });
-}
-
-function mergeUsersWithDefaults(users) {
-  const defaultUsers = normalizeUsers(INITIAL_USERS);
-  const loadedUsers = normalizeUsers(users);
-  const mergedUsers = [...loadedUsers];
-  const seenAccounts = new Set(loadedUsers.map(user => normalizeAccount(user.account || user.id)));
-
-  defaultUsers.forEach(user => {
-    const account = normalizeAccount(user.account || user.id);
-    if (seenAccounts.has(account)) return;
-    mergedUsers.push({ ...user, account, password: user.password || '123456' });
-  });
-
-  return mergedUsers;
-}
-
-function normalizeSubjectName(subject) {
-  const legacy = {
-    math: '数学',
-    english: '英语',
-    chinese: '语文',
-    physics: '物理',
+    if (!isSupabaseConfigured) {
+      baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+      return undefined;
     chemistry: '化学',
     biology: '生物',
-    history: '历史',
-    geography: '地理',
-    politics: '政治',
-    other: '其他',
-  };
-  if (typeof subject !== 'string') return '其他';
-  return legacy[subject] || subject;
+    let active = true;
+
+    const hydrate = async (userId) => {
+      const snapshot = await fetchCloudState(userId);
+      if (!active) return;
+      cloudUserIdRef.current = userId;
+      baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+    };
+
+    const scheduleHydrate = (userId, delay = 250) => {
+      if (!userId) return;
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+      }
+      refreshTimerRef.current = setTimeout(() => {
+        hydrate(userId).catch(() => {
+          if (active) {
+            baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+          }
+        });
+      }, delay);
+    };
+
+    const loadCloud = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!active) return;
+
+        if (data.session?.user) {
+          cloudUserIdRef.current = data.session.user.id;
+          await hydrate(data.session.user.id);
+        } else {
+          cloudUserIdRef.current = null;
+          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+        }
+      } catch {
+        if (active) {
+          cloudUserIdRef.current = null;
+          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+        }
+      }
+    };
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        cloudUserIdRef.current = session.user.id;
+        scheduleHydrate(session.user.id, 0);
+      } else if (active) {
+        cloudUserIdRef.current = null;
+        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+      }
+    });
+
+    const channel = supabase
+      .channel('friendcircle-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => scheduleHydrate(cloudUserIdRef.current))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => scheduleHydrate(cloudUserIdRef.current))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => scheduleHydrate(cloudUserIdRef.current))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => scheduleHydrate(cloudUserIdRef.current))
+      .subscribe();
+
+    loadCloud();
 }
 
-function syncCurrentUser(users, currentUserId) {
-  if (!currentUserId) return null;
-  return users.find(user => user.id === currentUserId) || null;
-}
-
+      active = false;
 function normalizeComment(comment) {
   return {
     id: comment?.id || generateId(),
     userId: comment?.userId || comment?.user_id || '',
+      authListener.subscription.unsubscribe();
+      supabase.removeChannel(channel);
     replyToUserId: comment?.replyToUserId || comment?.reply_to_user_id || '',
     replyToUserName: comment?.replyToUserName || comment?.reply_to_user_name || '',
-    text: comment?.text || '',
-    images: toUniqueStrings(comment?.images),
-    audioFiles: ensureArray(comment?.audioFiles || comment?.audio_files).map(normalizeAudioFile),
-    createdAt: comment?.createdAt || comment?.created_at || new Date().toISOString(),
   };
 }
 
-function normalizeAudioFile(file) {
-  return {
-    name: file?.name || '语音文件',
-    uri: file?.uri || '',
-  };
-}
-
-function normalizePost(item) {
-  return {
-    id: item?.id || generateId(),
-    userId: item?.userId || item?.user_id || '',
-    text: item?.text || '',
-    images: toUniqueStrings(item?.images),
-    videos: toUniqueStrings(item?.videos),
-    likes: toUniqueStrings(item?.likes),
-    comments: ensureArray(item?.comments).map(normalizeComment),
-    createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
-  };
-}
-
-function normalizePlan(item) {
-  return {
-    id: item?.id || generateId(),
-    userId: item?.userId || item?.user_id || '',
+      return { ok: false, error: '当前未连接 Supabase 云端，请检查 EXPO_PUBLIC_SUPABASE_URL 和 EXPO_PUBLIC_SUPABASE_ANON_KEY' };
     title: item?.title || '',
     date: item?.date || new Date().toISOString(),
     tasks: ensureArray(item?.tasks).map(task => ({
@@ -740,18 +695,7 @@ export function AppProvider({ children }) {
       };
     }
 
-    (async () => {
-      try {
-        const saved = await AsyncStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          baseDispatch({ type: 'LOAD_STATE', payload: sanitizeLoadedState(JSON.parse(saved)) });
-        } else {
-          baseDispatch({ type: 'LOAD_STATE', payload: sanitizeLoadedState(null) });
-        }
-      } catch {
-        baseDispatch({ type: 'LOAD_STATE', payload: sanitizeLoadedState(null) });
-      }
-    })();
+    baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
 
     return undefined;
   }, []);
@@ -769,23 +713,7 @@ export function AppProvider({ children }) {
 
   const dispatch = async (action) => {
     if (!isSupabaseConfigured) {
-      if (action.type === 'LOGIN') {
-        const account = normalizeAccount(action.payload?.account);
-        const password = action.payload?.password || '';
-        const matched = stateRef.current.users.find(
-          user => normalizeAccount(user.account || '') === account && (user.password || '') === password
-        );
-        if (!matched) return { ok: false, error: '账号或密码错误' };
-      }
-
-      if (action.type === 'REGISTER') {
-        const account = normalizeAccount(action.payload?.account);
-        const duplicated = stateRef.current.users.some(user => normalizeAccount(user.account || '') === account);
-        if (duplicated) return { ok: false, error: '该账号已被注册' };
-      }
-
-      baseDispatch(action);
-      return { ok: true };
+      return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
     }
 
     try {

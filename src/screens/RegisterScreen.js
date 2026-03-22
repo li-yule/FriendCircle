@@ -7,7 +7,7 @@ function normalizeAccount(value) {
 }
 
 export default function RegisterScreen({ navigation }) {
-  const { state, dispatch, isCloudEnabled } = useApp();
+  const { dispatch } = useApp();
   const [name, setName] = useState('');
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
@@ -29,14 +29,6 @@ export default function RegisterScreen({ navigation }) {
     if (password !== confirmPassword) {
       Alert.alert('提示', '两次输入的密码不一致');
       return;
-    }
-
-    if (!isCloudEnabled) {
-      const duplicated = state.users.some(user => normalizeAccount(user.account || '') === accountValue);
-      if (duplicated) {
-        Alert.alert('提示', '该账号已被注册');
-        return;
-      }
     }
 
     const result = await dispatch({
