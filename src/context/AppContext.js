@@ -169,6 +169,7 @@ function normalizeKnowledge(item) {
     likes: toUniqueStrings(item?.likes),
     comments: ensureArray(item?.comments).map(normalizeComment),
     createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
+    type: item?.type || 'knowledge_point',
   };
 }
 
@@ -232,6 +233,7 @@ function serializeKnowledge(item) {
     likes: normalized.likes,
     comments: normalized.comments,
     created_at: normalized.createdAt,
+    type: normalized.type,
   };
 }
 

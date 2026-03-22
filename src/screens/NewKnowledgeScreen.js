@@ -35,6 +35,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [knowledgeType, setKnowledgeType] = useState(existing?.type || 'knowledge_point');
 
   useEffect(() => {
     return () => {
@@ -244,6 +245,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           correctAnswerImages,
           summaryImages,
           tags,
+          type: knowledgeType,
         },
       });
     } else {
@@ -264,6 +266,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           correctAnswerImages,
           summaryImages,
           tags,
+          type: knowledgeType,
           likes: [],
           comments: [],
           createdAt: new Date().toISOString(),
@@ -292,6 +295,24 @@ export default function NewKnowledgeScreen({ navigation, route }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>知识类型</Text>
+          <View style={styles.typeRow}>
+            <TouchableOpacity
+              style={[styles.typeChip, knowledgeType === 'knowledge_point' && styles.typeChipActive]}
+              onPress={() => setKnowledgeType('knowledge_point')}
+            >
+              <Text style={[styles.typeChipText, knowledgeType === 'knowledge_point' && styles.typeChipTextActive]}>学习要点</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.typeChip, knowledgeType === 'error_item' && styles.typeChipActive]}
+              onPress={() => setKnowledgeType('error_item')}
+            >
+              <Text style={[styles.typeChipText, knowledgeType === 'error_item' && styles.typeChipTextActive]}>错误项</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* 科目选择 */}
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>科目</Text>
@@ -565,6 +586,16 @@ const styles = StyleSheet.create({
   body: { padding: 16, gap: 20 },
   fieldGroup: { gap: 8 },
   label: { fontSize: 14, fontWeight: '600', color: '#333' },
+  typeRow: { flexDirection: 'row', gap: 8 },
+  typeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: '#F0F0F0',
+  },
+  typeChipActive: { backgroundColor: '#333' },
+  typeChipText: { fontSize: 13, color: '#666' },
+  typeChipTextActive: { color: '#fff' },
   subjectList: { flexDirection: 'row', gap: 8 },
   subjectChip: {
     paddingHorizontal: 12,

@@ -1,0 +1,361 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  BackHandler, View, Text, StyleSheet, TouchableOpacity, Image,
+  FlatList, Dimensions, Alert, ScrollView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system/legacy';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useApp } from '../context/AppContext';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+function normalizeItems(items) {
+  if (!Array.isArray(items)) return [];
+  return items.filter(item => item?.uri).map(item => ({
+    type: item.type === 'video' ? 'video' : 'image',
+    uri: item.uri,
+    label: item.label || '媒体',
+  }));
+}
+
+function inferExt(uri, fallback = 'jpg') {
+  const clean = String(uri || '').split('?')[0];
+  const match = clean.match(/\.([a-zA-Z0-9]+)$/);
+  return match ? match[1].toLowerCase() : fallback;
+}
+
+function getDownloadName(item) {
+  const ext = inferExt(item?.uri, item?.type === 'video' ? 'mp4' : 'jpg');
+  return `friendcircle_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+}
+
+function ImageSlide({ uri }) {
+  return (
+    <View style={styles.slide}>
+      <ScrollView
+        style={styles.zoomWrap}
+        contentContainerStyle={styles.zoomContent}
+        maximumZoomScale={4}
+        minimumZoomScale={1}
+        pinchGestureEnabled
+        bouncesZoom
+      >
+        <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+      </ScrollView>
+    </View>
+  );
+}
+
+function VideoSlide({ uri }) {
+  const source = useMemo(() => ({ uri, useCaching: true }), [uri]);
+  const player = useVideoPlayer(source);
+
+  useEffect(() => {
+    if (!player) return;
+    player.play();
+    return () => player.pause();
+  }, [player, uri]);
+
+  return (
+    <View style={styles.slide}>
+      <VideoView player={player} style={{ flex: 1 }} nativeControls />
+    </View>
+  );
+}
+
+export default function KnowledgeMediaViewerScreen({ navigation, route }) {
+  const { state } = useApp();
+  const { knowledge, users } = state;
+  const { initialKnowledgeId, initialItemIndex = 0 } = route.params || {};
+
+  // 获取初始知识项目
+  const initialKnowledge = knowledge.find(k => k.id === initialKnowledgeId);
+
+  if (!initialKnowledge) return null;
+
+  const subject = initialKnowledge.subject;
+  const itemsInSubject = knowledge.filter(k => k.subject === subject);
+  const sortedItems = itemsInSubject.sort((a, b) => 
+    new Date(b.createdAt) - new Date(a.createdAt)
+  );
+
+  // 构建所有项目的媒体集合
+  const allMediaByItem = sortedItems.map(item => {
+    const mediaItems = [
+      ...(item.questionImages || []).map(uri => ({ uri, type: 'image', label: '题目' })),
+      ...(item.wrongAnswerImages || []).map(uri => ({ uri, type: 'image', label: '错误答案' })),
+      ...(item.correctAnswerImages || []).map(uri => ({ uri, type: 'image', label: '正确答案' })),
+      ...(item.summaryImages || []).map(uri => ({ uri, type: 'image', label: '知识总结' })),
+      ...(item.images || []).map(uri => ({ uri, type: 'image', label: '附件' })),
+    ];
+    return {
+      knowledge: item,
+      media: normalizeItems(mediaItems),
+    };
+  });
+
+  // 初始化当前项目和项目内索引
+  const currentKnowledgeIndex = sortedItems.findIndex(k => k.id === initialKnowledgeId);
+  const [knowledgeIndex, setKnowledgeIndex] = useState(currentKnowledgeIndex);
+  const [mediaIndex, setMediaIndex] = useState(Math.max(0, initialItemIndex));
+
+  const current = allMediaByItem[knowledgeIndex];
+  const currentKnowledge = current?.knowledge;
+  const currentMedia = current?.media || [];
+  const safeMediaIndex = Math.max(0, Math.min(mediaIndex, Math.max(0, currentMedia.length - 1)));
+
+  useEffect(() => {
+    const subscribe = BackHandler.addEventListener('hardwareBackPress', () => {
+      navigation.goBack();
+      return true;
+    });
+    return () => subscribe.remove();
+  }, [navigation]);
+
+  const handleSaveAsset = async (item) => {
+    if (!item?.uri) return;
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('需要权限', '请允许访问相册后再保存文件');
+        return;
+      }
+
+      const filename = getDownloadName(item);
+      const filepath = `${FileSystem.documentDirectory}${filename}`;
+
+      const downloadResumable = FileSystem.createDownloadResumable(item.uri, filepath);
+      const result = await downloadResumable.downloadAsync();
+
+      if (result?.uri) {
+        await MediaLibrary.saveToLibraryAsync(result.uri);
+        Alert.alert('保存成功', '文件已保存到相册');
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      Alert.alert('保存失败', '请检查网络后重试');
+    }
+  };
+
+  const handlePrevKnowledge = () => {
+    if (knowledgeIndex > 0) {
+      setKnowledgeIndex(knowledgeIndex - 1);
+      setMediaIndex(0);
+    }
+  };
+
+  const handleNextKnowledge = () => {
+    if (knowledgeIndex < allMediaByItem.length - 1) {
+      setKnowledgeIndex(knowledgeIndex + 1);
+      setMediaIndex(0);
+    }
+  };
+
+  const renderMediaItem = ({ item }) => {
+    if (item.type === 'video') {
+      return <VideoSlide uri={item.uri} />;
+    }
+    return <ImageSlide uri={item.uri} />;
+  };
+
+  const key = item => item?.uri || '';
+
+  if (!currentMedia || currentMedia.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.title}>该知识项目无媒体</Text>
+        </View>
+      </View>
+    );
+  }
+
+  const getUserName = id => users.find(u => u.id === id)?.name || '未知';
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <View style={styles.progress}>
+          <Text style={styles.progressText}>
+            {knowledgeIndex + 1} / {allMediaByItem.length}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => handleSaveAsset(currentMedia[safeMediaIndex])}
+          style={styles.headerBtn}
+        >
+          <Ionicons name="download-outline" size={24} color="#333" />
+        </TouchableOpacity>
+      </View>
+
+      {/* 知识项目导航 */}
+      <View style={styles.knowledgeNavBar}>
+        <TouchableOpacity
+          style={[styles.navBtn, knowledgeIndex === 0 && styles.navBtnDisabled]}
+          onPress={handlePrevKnowledge}
+          disabled={knowledgeIndex === 0}
+        >
+          <Ionicons name="chevron-up-outline" size={20} color={knowledgeIndex === 0 ? '#ccc' : '#333'} />
+        </TouchableOpacity>
+
+        <View style={styles.knowledgeInfo}>
+          <Text style={styles.knowledgeSubject}>{currentKnowledge?.subject}</Text>
+          <Text style={styles.knowledgeQuestion} numberOfLines={2}>
+            {currentKnowledge?.question || '[图片题目]'}
+          </Text>
+          <Text style={styles.knowledgeAuthor}>
+            {getUserName(currentKnowledge?.userId)}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.navBtn, knowledgeIndex === allMediaByItem.length - 1 && styles.navBtnDisabled]}
+          onPress={handleNextKnowledge}
+          disabled={knowledgeIndex === allMediaByItem.length - 1}
+        >
+          <Ionicons name="chevron-down-outline" size={20} color={knowledgeIndex === allMediaByItem.length - 1 ? '#ccc' : '#333'} />
+        </TouchableOpacity>
+      </View>
+
+      {/* 媒体查看 */}
+      <FlatList
+        data={currentMedia}
+        renderItem={renderMediaItem}
+        keyExtractor={key}
+        horizontal
+        pagingEnabled
+        scrollEventThrottle={16}
+        initialScrollIndex={safeMediaIndex}
+        onViewableItemsChanged={({ viewableItems }) => {
+          if (viewableItems.length > 0) {
+            setMediaIndex(currentMedia.indexOf(viewableItems[0].item));
+          }
+        }}
+        viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
+        style={styles.mediaList}
+        getItemLayout={(data, index) => ({
+          length: SCREEN_WIDTH,
+          offset: SCREEN_WIDTH * index,
+          index,
+        })}
+      />
+
+      {/* 底部媒体计数 */}
+      <View style={styles.footer}>
+        <Text style={styles.mediaCount}>
+          {safeMediaIndex + 1} / {currentMedia.length}
+        </Text>
+        <Text style={styles.mediaLabel}>
+          {currentMedia[safeMediaIndex]?.label || '媒体'}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  headerBtn: {
+    padding: 8,
+  },
+  progress: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  knowledgeNavBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    backgroundColor: '#fafafa',
+  },
+  navBtn: {
+    padding: 8,
+    marginHorizontal: 4,
+  },
+  navBtnDisabled: {
+    opacity: 0.4,
+  },
+  knowledgeInfo: {
+    flex: 1,
+    marginHorizontal: 8,
+  },
+  knowledgeSubject: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 2,
+  },
+  knowledgeQuestion: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  knowledgeAuthor: {
+    fontSize: 11,
+    color: '#999',
+  },
+  mediaList: {
+    flex: 1,
+  },
+  slide: {
+    width: SCREEN_WIDTH,
+    backgroundColor: '#000',
+  },
+  zoomWrap: {
+    flex: 1,
+  },
+  zoomContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  image: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  footer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    backgroundColor: '#f5f5f5',
+  },
+  mediaCount: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 4,
+  },
+  mediaLabel: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '500',
+  },
+});

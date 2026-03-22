@@ -17,6 +17,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import FriendProfileScreen from '../screens/FriendProfileScreen';
 import MediaViewerScreen from '../screens/MediaViewerScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
+import KnowledgeMediaViewerScreen from '../screens/KnowledgeMediaViewerScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 
@@ -132,6 +133,7 @@ export default function AppNavigator() {
         )}
         <RootStack.Screen name="MediaViewer" component={MediaViewerScreen} />
         <RootStack.Screen name="PostDetail" component={PostDetailScreen} />
+          <RootStack.Screen name="KnowledgeMediaViewer" component={KnowledgeMediaViewerScreen} />
       </RootStack.Navigator>
     </NavigationContainer>
   );

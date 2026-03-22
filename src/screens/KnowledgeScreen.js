@@ -21,6 +21,7 @@ export default function KnowledgeScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { knowledge, currentUser, users } = state;
   const [selectedSubject, setSelectedSubject] = useState('all');
+  const [selectedType, setSelectedType] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [subjectInput, setSubjectInput] = useState('');
 
@@ -46,10 +47,11 @@ export default function KnowledgeScreen({ navigation }) {
 
   const filtered = visibleKnowledge.filter(k => {
     const matchSubject = selectedSubject === 'all' || k.subject === selectedSubject;
+    const matchType = selectedType === 'all' || (k.type || 'knowledge_point') === selectedType;
     const author = getUserById(k.userId);
     const sourceText = `${k.subject || ''} ${author.name || ''} ${(k.tags || []).join(' ')} ${k.question || ''} ${k.summary || ''} ${k.correctAnswer || ''} ${k.wrongAnswer || ''}`.toLowerCase();
     const matchSearch = !searchText || sourceText.includes(searchText.toLowerCase());
-    return matchSubject && matchSearch;
+    return matchSubject && matchType && matchSearch;
   });
 
   const handleAddSubject = () => {
@@ -111,9 +113,16 @@ export default function KnowledgeScreen({ navigation }) {
 
         <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('KnowledgeDetail', { item })}>
           {/* 题目 */}
-          <Text style={styles.question} numberOfLines={3}>
-            {item.question || (item.questionImages?.length > 0 ? '[图片题目]' : '未填写题目内容')}
-          </Text>
+          <View style={styles.questionHeader}>
+            <Text style={styles.question} numberOfLines={3}>
+              {item.question || (item.questionImages?.length > 0 ? '[图片题目]' : '未填写题目内容')}
+            </Text>
+            <View style={[styles.typeBadge, (item.type || 'knowledge_point') === 'error_item' ? styles.typeBadgeError : styles.typeBadgeKnowledge]}>
+              <Text style={[styles.typeBadgeText, (item.type || 'knowledge_point') === 'error_item' ? styles.typeTextError : styles.typeTextKnowledge]}>
+                {(item.type || 'knowledge_point') === 'error_item' ? '错误项' : '学习要点'}
+              </Text>
+            </View>
+          </View>
 
           {item.questionImages?.length > 0 && (
             <View style={styles.questionImagePreviewWrap}>
@@ -209,6 +218,27 @@ export default function KnowledgeScreen({ navigation }) {
           <Text style={styles.subjectCreateBtnText}>添加学科</Text>
         </TouchableOpacity>
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeFilterScroll} contentContainerStyle={styles.typeFilterList}>
+        <TouchableOpacity
+          style={[styles.typeFilterChip, selectedType === 'all' && styles.typeFilterChipActive]}
+          onPress={() => setSelectedType('all')}
+        >
+          <Text style={[styles.typeFilterText, selectedType === 'all' && styles.typeFilterTextActive]}>全部类型</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.typeFilterChip, selectedType === 'knowledge_point' && styles.typeFilterChipActive]}
+          onPress={() => setSelectedType('knowledge_point')}
+        >
+          <Text style={[styles.typeFilterText, selectedType === 'knowledge_point' && styles.typeFilterTextActive]}>学习要点</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.typeFilterChip, selectedType === 'error_item' && styles.typeFilterChipActive]}
+          onPress={() => setSelectedType('error_item')}
+        >
+          <Text style={[styles.typeFilterText, selectedType === 'error_item' && styles.typeFilterTextActive]}>错误项</Text>
+        </TouchableOpacity>
+      </ScrollView>
 
       {/* 科目筛选 */}
       <ScrollView
@@ -315,6 +345,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   subjectCreateBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+  typeFilterScroll: { maxHeight: 40, marginBottom: 6 },
+  typeFilterList: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
+  typeFilterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: '#ECECEC',
+  },
+  typeFilterChipActive: { backgroundColor: '#333' },
+  typeFilterText: { fontSize: 12, color: '#666' },
+  typeFilterTextActive: { color: '#fff' },
   subjectScroll: { maxHeight: 56, marginBottom: 6 },
   subjectList: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
   subjectChip: {
@@ -347,7 +388,14 @@ const styles = StyleSheet.create({
   subjectBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   subjectName: { fontSize: 12, fontWeight: '600' },
   timeText: { fontSize: 12, color: '#bbb' },
+  questionHeader: { marginBottom: 8, gap: 6 },
   question: { fontSize: 15, color: '#333', lineHeight: 22, marginBottom: 8, fontWeight: '500' },
+  typeBadge: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
+  typeBadgeKnowledge: { backgroundColor: '#4ECDC422' },
+  typeBadgeError: { backgroundColor: '#FF6B6B22' },
+  typeBadgeText: { fontSize: 11, fontWeight: '600' },
+  typeTextKnowledge: { color: '#4ECDC4' },
+  typeTextError: { color: '#FF6B6B' },
   questionImagePreviewWrap: {
     position: 'relative',
     marginBottom: 10,

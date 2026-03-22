@@ -32,17 +32,16 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
 
   const author = users.find(u => u.id === liveItem.userId) || { name: '未知', avatarColor: '#ccc' };
   const liked = (liveItem.likes || []).includes(currentUser.id);
-  const previewSections = useMemo(() => {
+  const knowledgeMediaSections = useMemo(() => {
     const sections = [
       ...(liveItem.questionImages || []).map(uri => ({ uri, label: '题目', type: 'image' })),
       ...(liveItem.wrongAnswerImages || []).map(uri => ({ uri, label: '错误答案', type: 'image' })),
       ...(liveItem.correctAnswerImages || []).map(uri => ({ uri, label: '正确答案', type: 'image' })),
       ...(liveItem.summaryImages || []).map(uri => ({ uri, label: '知识总结', type: 'image' })),
       ...(liveItem.images || []).map(uri => ({ uri, label: '附件', type: 'image' })),
-      ...((liveItem.comments || []).flatMap(comment => (comment.images || []).map(uri => ({ uri, label: '评论图片', type: 'image' })))),
     ];
     return sections;
-  }, [liveItem.comments, liveItem.correctAnswerImages, liveItem.images, liveItem.questionImages, liveItem.summaryImages, liveItem.wrongAnswerImages]);
+  }, [liveItem.correctAnswerImages, liveItem.images, liveItem.questionImages, liveItem.summaryImages, liveItem.wrongAnswerImages]);
 
   useEffect(() => {
     return () => {
@@ -57,10 +56,22 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   };
 
   const openImageViewer = (uri) => {
-    const index = previewSections.findIndex(item => item.uri === uri);
+    const index = knowledgeMediaSections.findIndex(item => item.uri === uri);
+    if (index < 0) return;
+    navigation.navigate('KnowledgeMediaViewer', {
+      initialKnowledgeId: liveItem.id,
+      initialItemIndex: index,
+    });
+  };
+
+  const openCommentImageViewer = (uri) => {
+    const allCommentImages = (liveItem.comments || []).flatMap(comment =>
+      (comment.images || []).map(imageUri => ({ uri: imageUri, label: '评论图片', type: 'image' }))
+    );
+    const index = allCommentImages.findIndex(item => item.uri === uri);
     if (index < 0) return;
     navigation.navigate('MediaViewer', {
-      items: previewSections,
+      items: allCommentImages,
       initialIndex: index,
       sourceTab: 'KnowledgeTab',
     });
@@ -387,7 +398,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.commentMediaScroll}>
                     <View style={styles.commentMediaRow}>
                       {c.images.map((uri, index) => (
-                        <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openImageViewer(uri)}>
+                        <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openCommentImageViewer(uri)}>
                           <Image source={{ uri }} style={styles.commentImage} />
                         </TouchableOpacity>
                       ))}
