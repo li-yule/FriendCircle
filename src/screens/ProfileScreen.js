@@ -33,7 +33,14 @@ export default function ProfileScreen({ navigation }) {
     return postComments + knowledgeComments;
   }, [currentUser.id, knowledge, myPosts]);
   const myFriends = users.filter(u => (currentUser.friends || []).includes(u.id));
-  const recommendFriends = users.filter(u => u.id !== currentUser.id && !(currentUser.friends || []).includes(u.id));
+  const recommendFriends = users.filter(u => {
+    if (u.id === currentUser.id) return false;
+    if ((currentUser.friends || []).includes(u.id)) return false;
+    // 只显示有发布过内容的真实用户
+    const userPosts = posts.filter(p => p.userId === u.id);
+    const userPlans = plans.filter(p => p.userId === u.id);
+    return userPosts.length > 0 || userPlans.length > 0;
+  });
 
   const buildPostMediaItems = (post) => [
     ...((post.images || []).map(uri => ({ type: 'image', uri }))),

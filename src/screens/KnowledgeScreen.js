@@ -23,7 +23,6 @@ export default function KnowledgeScreen({ navigation }) {
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
   const [searchText, setSearchText] = useState('');
-  const [subjectInput, setSubjectInput] = useState('');
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const friendIds = new Set(currentUser.friends || []);
@@ -187,12 +186,35 @@ export default function KnowledgeScreen({ navigation }) {
     <View style={styles.container}>
       {/* 顶部 */}
       <View style={styles.topBar}>
-        <Text style={styles.title}>知识库</Text>
+        <TouchableOpacity
+          style={[styles.typeButton, selectedType === 'knowledge_point' && styles.typeButtonActive]}
+          onPress={() => setSelectedType('knowledge_point')}
+        >
+          <Text style={[styles.typeButtonText, selectedType === 'knowledge_point' && styles.typeButtonTextActive]}>
+            学习要点
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.typeButton, selectedType === 'error_item' && styles.typeButtonActive]}
+          onPress={() => setSelectedType('error_item')}
+        >
+          <Text style={[styles.typeButtonText, selectedType === 'error_item' && styles.typeButtonTextActive]}>
+            错误项
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.typeButton, selectedType === 'all' && styles.typeButtonActive]}
+          onPress={() => setSelectedType('all')}
+        >
+          <Text style={[styles.typeButtonText, selectedType === 'all' && styles.typeButtonTextActive]}>
+            全部
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.addBtn}
           onPress={() => navigation.navigate('NewKnowledge')}
         >
-          <Ionicons name="add" size={28} color="#fff" />
+          <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -206,39 +228,6 @@ export default function KnowledgeScreen({ navigation }) {
           onChangeText={setSearchText}
         />
       </View>
-
-      <View style={styles.subjectCreateRow}>
-        <TextInput
-          style={styles.subjectCreateInput}
-          placeholder="新增学科，例如：信息技术"
-          value={subjectInput}
-          onChangeText={setSubjectInput}
-        />
-        <TouchableOpacity style={styles.subjectCreateBtn} onPress={handleAddSubject}>
-          <Text style={styles.subjectCreateBtnText}>添加学科</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeFilterScroll} contentContainerStyle={styles.typeFilterList}>
-        <TouchableOpacity
-          style={[styles.typeFilterChip, selectedType === 'all' && styles.typeFilterChipActive]}
-          onPress={() => setSelectedType('all')}
-        >
-          <Text style={[styles.typeFilterText, selectedType === 'all' && styles.typeFilterTextActive]}>全部类型</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.typeFilterChip, selectedType === 'knowledge_point' && styles.typeFilterChipActive]}
-          onPress={() => setSelectedType('knowledge_point')}
-        >
-          <Text style={[styles.typeFilterText, selectedType === 'knowledge_point' && styles.typeFilterTextActive]}>学习要点</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.typeFilterChip, selectedType === 'error_item' && styles.typeFilterChipActive]}
-          onPress={() => setSelectedType('error_item')}
-        >
-          <Text style={[styles.typeFilterText, selectedType === 'error_item' && styles.typeFilterTextActive]}>错误项</Text>
-        </TouchableOpacity>
-      </ScrollView>
 
       {/* 科目筛选 */}
       <ScrollView
@@ -295,8 +284,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
     backgroundColor: '#fff',
     paddingHorizontal: 16,
     paddingTop: 50,
@@ -304,14 +294,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
+  typeButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#F0F0F0',
+  },
+  typeButtonActive: { backgroundColor: '#4ECDC4' },
+  typeButtonText: { fontSize: 14, fontWeight: '600', color: '#999' },
+  typeButtonTextActive: { color: '#fff' },
   title: { fontSize: 20, fontWeight: 'bold', color: '#333' },
   addBtn: {
     backgroundColor: '#FFE66D',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 'auto',
   },
   searchRow: {
     flexDirection: 'row',
@@ -329,33 +329,6 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   searchInput: { flex: 1, fontSize: 14, color: '#333' },
-  subjectCreateRow: { flexDirection: 'row', gap: 8, marginHorizontal: 12, marginBottom: 8 },
-  subjectCreateInput: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 13,
-  },
-  subjectCreateBtn: {
-    backgroundColor: '#4ECDC4',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
-  },
-  subjectCreateBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
-  typeFilterScroll: { maxHeight: 40, marginBottom: 6 },
-  typeFilterList: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
-  typeFilterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 14,
-    backgroundColor: '#ECECEC',
-  },
-  typeFilterChipActive: { backgroundColor: '#333' },
-  typeFilterText: { fontSize: 12, color: '#666' },
-  typeFilterTextActive: { color: '#fff' },
   subjectScroll: { maxHeight: 56, marginBottom: 6 },
   subjectList: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
   subjectChip: {

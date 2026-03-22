@@ -457,10 +457,12 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           </ScrollView>
         </View>
 
-        {/* 我的错误答案 */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>我的错误答案</Text>
-          <TextInput
+        {knowledgeType === 'error_item' && (
+          <>
+            {/* 我的错误答案 */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>我的错误答案</Text>
+              <TextInput
             style={[styles.input, styles.multiline]}
             placeholder="我当时是怎么答的（可选）..."
             multiline
@@ -526,6 +528,8 @@ export default function NewKnowledgeScreen({ navigation, route }) {
             </View>
           </ScrollView>
         </View>
+          </>
+        )}
 
         {/* 知识总结 */}
         <View style={styles.fieldGroup}>

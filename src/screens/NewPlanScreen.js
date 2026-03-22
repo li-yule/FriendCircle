@@ -15,7 +15,6 @@ export default function NewPlanScreen({ navigation }) {
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getTodayStr());
   const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [tasks, setTasks] = useState([{ id: generateId(), text: '', done: false, reminderTime: '' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   function getTodayStr() {
@@ -23,26 +22,12 @@ export default function NewPlanScreen({ navigation }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  const addTask = () => {
-    setTasks(prev => [...prev, { id: generateId(), text: '', done: false, reminderTime: '' }]);
-  };
-
-  const updateTask = (id, field, val) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: val } : t));
-  };
-
-  const removeTask = (id) => {
-    if (tasks.length <= 1) return;
-    setTasks(prev => prev.filter(t => t.id !== id));
-  };
-
   const handleSubmit = async () => {
     if (isSubmitting) return;
 
     const trimmedTitle = title.trim();
-    const validTasks = tasks.filter(t => t.text.trim());
-    if (!trimmedTitle && validTasks.length === 0) {
-      Alert.alert('提示', '请填写规划标题或至少一项小任务');
+    if (!trimmedTitle) {
+      Alert.alert('提示', '请填写规划标题');
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -63,10 +48,6 @@ export default function NewPlanScreen({ navigation }) {
       return;
     }
 
-    const normalizedTasks = validTasks.length > 0
-      ? validTasks
-      : [{ id: generateId(), text: trimmedTitle, done: false, reminderTime: '' }];
-
     setIsSubmitting(true);
     const result = await dispatch({
       type: 'ADD_PLAN',
@@ -75,7 +56,7 @@ export default function NewPlanScreen({ navigation }) {
         userId: currentUser.id,
         title: trimmedTitle,
         date: pickedDate.toISOString(),
-        tasks: normalizedTasks,
+        tasks: [],
         createdAt: new Date().toISOString(),
       },
     });
@@ -122,46 +103,7 @@ export default function NewPlanScreen({ navigation }) {
 
         <View style={styles.todayTip}>
           <Ionicons name="calendar-outline" size={16} color="#FF6B6B" />
-          <Text style={styles.todayTipText}>可创建今天和未来的规划。只写标题也能发布，会自动生成一条同名任务。</Text>
-        </View>
-
-        {/* 任务列表 */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>任务清单</Text>
-          {tasks.map((task, idx) => (
-            <View key={task.id} style={styles.taskRow}>
-              <View style={styles.taskInputWrap}>
-                <TextInput
-                  style={styles.taskInput}
-                  placeholder={`任务 ${idx + 1}`}
-                  value={task.text}
-                  onChangeText={val => updateTask(task.id, 'text', val)}
-                />
-                <View style={styles.reminderRow}>
-                  <Ionicons name="alarm-outline" size={14} color="#999" />
-                  <TextInput
-                    style={styles.reminderInput}
-                    placeholder="提醒时间（如 09:30）"
-                    value={task.reminderTime}
-                    onChangeText={val => updateTask(task.id, 'reminderTime', val)}
-                  />
-                </View>
-              </View>
-              <TouchableOpacity onPress={() => removeTask(task.id)} style={styles.removeTask}>
-                <Ionicons name="close-circle-outline" size={22} color="#FF6B6B" />
-              </TouchableOpacity>
-            </View>
-          ))}
-
-          <TouchableOpacity style={styles.addTaskBtn} onPress={addTask}>
-            <Ionicons name="add-circle-outline" size={20} color="#FF6B6B" />
-            <Text style={styles.addTaskText}>添加任务</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.tip}>
-          <Ionicons name="information-circle-outline" size={16} color="#999" />
-          <Text style={styles.tipText}>发布后可以在打卡页勾选完成情况，朋友也能看到你的进度！</Text>
+          <Text style={styles.todayTipText}>可创建今天和未来的规划。只需填写标题即可发布。</Text>
         </View>
       </ScrollView>
 
@@ -219,23 +161,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF7F7',
   },
   datePickerText: { color: '#FF6B6B', fontWeight: '600', fontSize: 14 },
-  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  taskInputWrap: { flex: 1, borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 12, padding: 10, backgroundColor: '#FAFAFA' },
-  taskInput: { fontSize: 15, color: '#333', paddingBottom: 4 },
-  reminderRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  reminderInput: { flex: 1, fontSize: 12, color: '#999' },
-  removeTask: { padding: 4 },
-  addTaskBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10 },
-  addTaskText: { color: '#FF6B6B', fontSize: 15, fontWeight: '500' },
-  tip: {
-    flexDirection: 'row',
-    gap: 6,
-    backgroundColor: '#FFF8F0',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'flex-start',
-  },
-  tipText: { flex: 1, fontSize: 13, color: '#999', lineHeight: 18 },
   todayTip: {
     flexDirection: 'row',
     gap: 6,
