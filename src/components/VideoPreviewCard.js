@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -9,6 +9,17 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style })
     playerInstance.muted = true;
     playerInstance.pause();
   });
+
+  useEffect(() => {
+    return () => {
+      try {
+        player.pause();
+        player.replace(null);
+      } catch (e) {
+        // ignore cleanup errors
+      }
+    };
+  }, [player]);
 
   return (
     <View style={[styles.container, style]}>

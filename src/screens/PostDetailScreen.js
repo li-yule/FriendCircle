@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, TextInput, Alert,
+  Image, TextInput, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -98,7 +98,11 @@ export default function PostDetailScreen({ navigation, route }) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={60}
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
@@ -135,16 +139,14 @@ export default function PostDetailScreen({ navigation, route }) {
         {(livePost.videos || []).length > 0 && (
           <View style={styles.videoList}>
             {(livePost.videos || []).map((uri, index) => (
-              <View key={`${uri}_${index}`} style={styles.videoWrap}>
+              <TouchableOpacity
+                key={`${uri}_${index}`}
+                style={styles.videoWrap}
+                activeOpacity={0.9}
+                onPress={() => openMediaViewer((livePost.images || []).length + index)}
+              >
                 <VideoPreviewCard uri={uri} style={styles.videoPreview} />
-                <TouchableOpacity
-                  style={styles.videoOpenBtn}
-                  onPress={() => openMediaViewer((livePost.images || []).length + index)}
-                >
-                  <Ionicons name="expand-outline" size={14} color="#fff" />
-                  <Text style={styles.videoOpenText}>查看</Text>
-                </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -163,7 +165,7 @@ export default function PostDetailScreen({ navigation, route }) {
         <Text style={styles.commentTitle}>评论</Text>
         {(livePost.comments || []).map(comment => {
           const commentUser = getUserById(comment.userId);
-          const replyingName = comment.replyToUserName || getUserById(comment.replyToUserId)?.name;
+          const replyingName = comment.replyToUserName || (comment.replyToUserId ? getUserById(comment.replyToUserId)?.name : null);
           return (
             <TouchableOpacity
               key={comment.id}
@@ -174,7 +176,7 @@ export default function PostDetailScreen({ navigation, route }) {
               <Avatar user={commentUser} size={30} />
               <View style={styles.commentBubble}>
                 <Text style={styles.commentName}>{commentUser.name}</Text>
-                {!!replyingName && <Text style={styles.replyHint}>回复 {replyingName}</Text>}
+                {replyingName && <Text style={styles.replyHint}>回复 {replyingName}</Text>}
                 <Text style={styles.commentText}>{comment.text}</Text>
                 <Text style={styles.commentTime}>{formatTime(comment.createdAt)}</Text>
               </View>
@@ -206,7 +208,7 @@ export default function PostDetailScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -235,19 +237,6 @@ const styles = StyleSheet.create({
   videoList: { gap: 10 },
   videoWrap: { position: 'relative' },
   videoPreview: { width: '100%', height: 220, borderRadius: 14 },
-  videoOpenBtn: {
-    position: 'absolute',
-    right: 10,
-    bottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.56)',
-  },
-  videoOpenText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   actionRow: { flexDirection: 'row', gap: 18, alignItems: 'center', paddingHorizontal: 4 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actionText: { color: '#666', fontSize: 13 },

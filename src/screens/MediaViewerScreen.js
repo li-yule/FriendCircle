@@ -35,12 +35,16 @@ function ImageSlide({ uri }) {
       <ScrollView
         style={styles.zoomWrap}
         contentContainerStyle={styles.zoomContent}
-        maximumZoomScale={4}
-        minimumZoomScale={1}
-        pinchGestureEnabled
-        bouncesZoom
+        scrollEnabled={true}
+        scrollEventThrottle={16}
+        bounces={true}
       >
-        <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+        <Image 
+          source={{ uri }} 
+          style={styles.image} 
+          resizeMode="contain"
+          onError={(e) => console.log('Image load error:', e.nativeEvent.error)}
+        />
       </ScrollView>
     </View>
   );
@@ -56,7 +60,12 @@ function VideoSlide({ uri }) {
 
   useEffect(() => {
     return () => {
-      player.pause();
+      try {
+        player.pause();
+        player.replace(null);
+      } catch (e) {
+        // ignore cleanup errors
+      }
     };
   }, [player]);
 
@@ -231,13 +240,21 @@ const styles = StyleSheet.create({
   },
   slide: {
     width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingBottom: 18,
   },
-  zoomWrap: { width: '100%', height: '100%' },
-  zoomContent: { flexGrow: 1, justifyContent: 'center' },
+  zoomWrap: { 
+    width: '100%', 
+    height: '100%',
+    backgroundColor: '#050505',
+  },
+  zoomContent: { 
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   image: {
     width: '100%',
     height: '100%',
