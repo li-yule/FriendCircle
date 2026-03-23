@@ -298,6 +298,31 @@ function buildCloudState(snapshot, currentUserId) {
   };
 }
 
+function mergeCurrentUserFast(state, profile, fallback = {}) {
+  const normalized = normalizeUsers([{
+    id: profile?.id || fallback.id,
+    account: profile?.account || fallback.account,
+    name: profile?.name || fallback.name || '新用户',
+    bio: profile?.bio || fallback.bio || '',
+    avatar: profile?.avatar || fallback.avatar || null,
+    avatarColor: profile?.avatar_color || profile?.avatarColor || fallback.avatarColor || pickAvatarColor(profile?.id || fallback.id),
+    friends: profile?.friends || fallback.friends || [],
+    subjects: profile?.subjects || fallback.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
+  }])[0];
+
+  const users = [
+    ...state.users.filter(user => user.id !== normalized.id),
+    normalized,
+  ];
+
+  return {
+    ...state,
+    users,
+    currentUser: normalized,
+    loaded: true,
+  };
+}
+
 function buildNewUser(payload) {
   const seed = Date.now().toString(36);
   return {
@@ -789,11 +814,40 @@ export function AppProvider({ children }) {
           return { ok: false, error: '请输入密码' };
         }
 
-        const { error } = await supabase.auth.signInWithPassword({
+        const signInRes = await supabase.auth.signInWithPassword({
           email: buildAuthEmail(account),
           password,
         });
-        if (error) return { ok: false, error: getFriendlyErrorMessage(error, '登录失败') };
+
+        if (signInRes.error) return { ok: false, error: getFriendlyErrorMessage(signInRes.error, '登录失败') };
+
+        const authUser = signInRes.data.user;
+        if (authUser?.id) {
+          const currentState = stateRef.current;
+          let profile = null;
+
+          const { data } = await supabase
+            .from('profiles')
+            .select('id,account,name,bio,avatar,avatar_color,friends,subjects')
+            .eq('id', authUser.id)
+            .maybeSingle();
+
+          profile = data || {
+            id: authUser.id,
+            account,
+            name: account,
+          };
+
+          baseDispatch({
+            type: 'LOAD_STATE',
+            payload: mergeCurrentUserFast(currentState, profile, {
+              id: authUser.id,
+              account,
+              name: account,
+            }),
+          });
+        }
+
         return { ok: true };
       }
 
@@ -843,6 +897,25 @@ export function AppProvider({ children }) {
         if (profileError) {
           return { ok: false, error: '注册成功，但创建资料失败，请检查 Supabase 表结构' };
         }
+
+        const currentState = stateRef.current;
+        baseDispatch({
+          type: 'LOAD_STATE',
+          payload: mergeCurrentUserFast(currentState, {
+            id: authUserId,
+            account,
+            name: action.payload?.name,
+            bio: '',
+            avatar: null,
+            avatar_color: pickAvatarColor(authUserId),
+            friends: [],
+            subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
+          }, {
+            id: authUserId,
+            account,
+            name: action.payload?.name,
+          }),
+        });
 
         return { ok: true };
       }
