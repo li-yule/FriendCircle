@@ -274,6 +274,13 @@ function createEmptyLoadedState() {
   };
 }
 
+function keepCurrentUserOnSyncError(state) {
+  return {
+    ...state,
+    loaded: true,
+  };
+}
+
 function buildCloudState(snapshot, currentUserId) {
   const users = normalizeUsers((snapshot?.profiles || []).map(profile => ({
     id: profile.id,
@@ -693,6 +700,100 @@ async function fetchCloudState(currentUserId) {
   }, currentUserId);
 }
 
+async function fetchCloudPatch(tables) {
+  const wanted = new Set(ensureArray(tables));
+  const tasks = [];
+
+  if (wanted.has('profiles')) {
+    tasks.push(
+      supabase
+        .from('profiles')
+        .select('id,account,name,bio,avatar,avatar_color,friends,subjects,created_at')
+        .order('created_at', { ascending: true })
+        .then(res => ({ key: 'profiles', ...res }))
+    );
+  }
+
+  if (wanted.has('posts')) {
+    tasks.push(
+      supabase
+        .from('posts')
+        .select('id,user_id,text,images,videos,likes,comments,created_at')
+        .order('created_at', { ascending: false })
+        .limit(CLOUD_POSTS_LIMIT)
+        .then(res => ({ key: 'posts', ...res }))
+    );
+  }
+
+  if (wanted.has('plans')) {
+    tasks.push(
+      supabase
+        .from('plans')
+        .select('id,user_id,title,date,tasks,reminder_at,created_at')
+        .order('date', { ascending: false })
+        .limit(CLOUD_PLANS_LIMIT)
+        .then(res => ({ key: 'plans', ...res }))
+    );
+  }
+
+  if (wanted.has('knowledge')) {
+    tasks.push(
+      supabase
+        .from('knowledge')
+        .select('id,user_id,subject,question,wrong_answer,correct_answer,summary,images,question_images,wrong_answer_images,correct_answer_images,summary_images,audio_files,tags,likes,comments,created_at,type')
+        .order('created_at', { ascending: false })
+        .limit(CLOUD_KNOWLEDGE_LIMIT)
+        .then(res => ({ key: 'knowledge', ...res }))
+    );
+  }
+
+  const results = await Promise.all(tasks);
+  const patch = {};
+
+  for (const item of results) {
+    if (item.error) throw item.error;
+    patch[item.key] = item.data;
+  }
+
+  return patch;
+}
+
+function applyCloudPatch(state, patch, currentUserId) {
+  const nextState = {
+    ...state,
+    loaded: true,
+  };
+
+  if (patch?.profiles) {
+    const users = normalizeUsers((patch.profiles || []).map(profile => ({
+      id: profile.id,
+      account: profile.account,
+      name: profile.name,
+      bio: profile.bio,
+      avatar: profile.avatar,
+      avatarColor: profile.avatar_color,
+      friends: profile.friends,
+      subjects: profile.subjects,
+    })));
+    nextState.users = users;
+    nextState.currentUser = syncCurrentUser(users, currentUserId || state.currentUser?.id);
+  }
+
+  if (patch?.posts) {
+    nextState.posts = ensureArray(patch.posts).map(normalizePost);
+  }
+
+  if (patch?.plans) {
+    nextState.plans = ensureArray(patch.plans).map(normalizePlan);
+  }
+
+  if (patch?.knowledge) {
+    nextState.knowledge = ensureArray(patch.knowledge).map(normalizeKnowledge);
+  }
+
+  return nextState;
+}
+
 function getFriendlyErrorMessage(error, fallback) {
   const message = error?.message || '';
   if (/invalid login credentials/i.test(message)) return '账号或密码错误';
@@ -709,6 +810,7 @@ export function AppProvider({ children }) {
   const stateRef = useRef(state);
   const cloudUserIdRef = useRef(null);
   const refreshTimerRef = useRef(null);
+  const pendingTablesRef = useRef(new Set());
 
   useEffect(() => {
     stateRef.current = state;
@@ -731,17 +833,31 @@ export function AppProvider({ children }) {
       baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
     };
 
-    const scheduleHydrate = (userId, delay = 700) => {
+    const scheduleHydrate = (userId, tables = ['profiles', 'posts', 'plans', 'knowledge'], delay = 450) => {
       if (!userId) return;
+      ensureArray(tables).forEach(table => pendingTablesRef.current.add(table));
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
       }
       refreshTimerRef.current = setTimeout(() => {
-        hydrate(userId).catch(() => {
+        const pendingTables = Array.from(pendingTablesRef.current);
+        pendingTablesRef.current.clear();
+        if (pendingTables.length === 0) return;
+
+        fetchCloudPatch(pendingTables)
+          .then(patch => {
+            if (!active) return;
+            baseDispatch({
+              type: 'LOAD_STATE',
+              payload: applyCloudPatch(stateRef.current, patch, userId),
+            });
+          })
+          .catch(() => {
           if (active) {
-            baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+            // 网络抖动或某个表查询失败时，保留当前登录态，避免闪回登录页
+            baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
           }
-        });
+          });
       }, delay);
     };
 
@@ -759,8 +875,7 @@ export function AppProvider({ children }) {
         }
       } catch {
         if (active) {
-          cloudUserIdRef.current = null;
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+          baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
         }
       }
     };
@@ -768,7 +883,7 @@ export function AppProvider({ children }) {
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         cloudUserIdRef.current = session.user.id;
-        scheduleHydrate(session.user.id, 0);
+        scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
       } else if (active) {
         cloudUserIdRef.current = null;
         baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
@@ -777,10 +892,10 @@ export function AppProvider({ children }) {
 
     const channel = supabase
       .channel('friendcircle-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => scheduleHydrate(cloudUserIdRef.current))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => scheduleHydrate(cloudUserIdRef.current))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => scheduleHydrate(cloudUserIdRef.current))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => scheduleHydrate(cloudUserIdRef.current))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => scheduleHydrate(cloudUserIdRef.current, ['profiles']))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => scheduleHydrate(cloudUserIdRef.current, ['posts']))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => scheduleHydrate(cloudUserIdRef.current, ['plans']))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => scheduleHydrate(cloudUserIdRef.current, ['knowledge']))
       .subscribe();
 
     loadCloud();
@@ -791,6 +906,7 @@ export function AppProvider({ children }) {
         clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
       }
+      pendingTablesRef.current.clear();
       authListener.subscription.unsubscribe();
       supabase.removeChannel(channel);
     };

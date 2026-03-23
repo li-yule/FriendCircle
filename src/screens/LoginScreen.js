@@ -14,8 +14,11 @@ export default function LoginScreen({ navigation }) {
   const { dispatch, isCloudEnabled } = useApp();
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleLogin = async () => {
+    if (submitting) return;
+
     const accountValue = normalizeAccount(account);
     const passwordValue = password.trim();
 
@@ -29,10 +32,16 @@ export default function LoginScreen({ navigation }) {
       return;
     }
 
-    const result = await dispatch({
-      type: 'LOGIN',
-      payload: { account: accountValue, password: passwordValue },
-    });
+    setSubmitting(true);
+    let result;
+    try {
+      result = await dispatch({
+        type: 'LOGIN',
+        payload: { account: accountValue, password: passwordValue },
+      });
+    } finally {
+      setSubmitting(false);
+    }
 
     if (!result?.ok) {
       Alert.alert('登录失败', result?.error || '账号或密码不正确');
@@ -60,8 +69,12 @@ export default function LoginScreen({ navigation }) {
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin}>
-          <Text style={styles.primaryBtnText}>登录</Text>
+        <TouchableOpacity
+          style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
+          onPress={handleLogin}
+          disabled={submitting}
+        >
+          <Text style={styles.primaryBtnText}>{submitting ? '登录中...' : '登录'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('Register')}>
@@ -105,6 +118,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     paddingVertical: 12,
+  },
+  primaryBtnDisabled: {
+    opacity: 0.65,
   },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   linkBtn: { marginTop: 12, alignItems: 'center' },

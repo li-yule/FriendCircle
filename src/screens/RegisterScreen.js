@@ -16,8 +16,11 @@ export default function RegisterScreen({ navigation }) {
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleRegister = async () => {
+    if (submitting) return;
+
     const accountValue = normalizeAccount(account);
     const passwordValue = password.trim();
     const confirmPasswordValue = confirmPassword.trim();
@@ -42,14 +45,20 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
-    const result = await dispatch({
-      type: 'REGISTER',
-      payload: {
-        name: name.trim(),
-        account: accountValue,
-        password: passwordValue,
-      },
-    });
+    setSubmitting(true);
+    let result;
+    try {
+      result = await dispatch({
+        type: 'REGISTER',
+        payload: {
+          name: name.trim(),
+          account: accountValue,
+          password: passwordValue,
+        },
+      });
+    } finally {
+      setSubmitting(false);
+    }
 
     if (!result?.ok) {
       Alert.alert('注册失败', result?.error || '请稍后重试');
@@ -90,8 +99,12 @@ export default function RegisterScreen({ navigation }) {
           onChangeText={setConfirmPassword}
         />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleRegister}>
-          <Text style={styles.primaryBtnText}>注册并登录</Text>
+        <TouchableOpacity
+          style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
+          onPress={handleRegister}
+          disabled={submitting}
+        >
+          <Text style={styles.primaryBtnText}>{submitting ? '注册中...' : '注册并登录'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.goBack()}>
@@ -131,6 +144,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     paddingVertical: 12,
+  },
+  primaryBtnDisabled: {
+    opacity: 0.65,
   },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   linkBtn: { marginTop: 12, alignItems: 'center' },
