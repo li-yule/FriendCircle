@@ -67,7 +67,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
-      quality: 0.8,
+      quality: 0.65,
     });
 
     if (result.canceled) return;
@@ -84,7 +84,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
-      quality: 0.8,
+      quality: 0.65,
     });
     if (result.canceled) return;
     const picked = (result.assets || []).map(asset => asset.uri).filter(Boolean);
@@ -99,7 +99,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
     }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
-      quality: 0.8,
+      quality: 0.65,
     });
     if (result.canceled) return;
     const uri = result.assets?.[0]?.uri;
@@ -115,7 +115,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
     }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
-      quality: 0.8,
+      quality: 0.65,
     });
     if (result.canceled) return;
     const uri = result.assets?.[0]?.uri;

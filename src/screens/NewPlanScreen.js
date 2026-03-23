@@ -46,8 +46,20 @@ export default function NewPlanScreen({ navigation }) {
       return;
     }
 
-    const permission = await Notifications.requestPermissionsAsync();
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('plan-reminders', {
+        name: '规划提醒',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 200, 120, 200],
+      });
+    }
+
+    let permission = await Notifications.getPermissionsAsync();
     if (!permission.granted) {
+      permission = await Notifications.requestPermissionsAsync();
+    }
+    if (!permission.granted) {
+      Alert.alert('提醒未开启', '请在系统设置里允许通知权限，才能收到规划提醒。');
       return;
     }
 
@@ -55,8 +67,13 @@ export default function NewPlanScreen({ navigation }) {
       content: {
         title: '规划提醒',
         body: `别忘了：${titleText}`,
+        sound: true,
       },
-      trigger: triggerDate,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+        channelId: Platform.OS === 'android' ? 'plan-reminders' : undefined,
+      },
     });
   };
 

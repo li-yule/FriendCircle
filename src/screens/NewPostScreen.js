@@ -34,7 +34,7 @@ export default function NewPostScreen({ navigation }) {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
-      quality: 0.8,
+      quality: 0.65,
     });
     if (!result.canceled) {
       const uris = result.assets.map(a => a.uri);
@@ -48,7 +48,7 @@ export default function NewPostScreen({ navigation }) {
       Alert.alert('需要权限', '请在设置中允许访问相机');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.65 });
     if (!result.canceled) {
       setImages(prev => [...prev, result.assets[0].uri].slice(0, 9));
     }
@@ -62,7 +62,7 @@ export default function NewPostScreen({ navigation }) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['videos'],
-      quality: 0.8,
+      quality: 0.6,
     });
     if (!result.canceled) {
       const picked = (result.assets || []).map(asset => asset.uri).filter(Boolean);
@@ -78,7 +78,7 @@ export default function NewPostScreen({ navigation }) {
     }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['videos'],
-      quality: 0.8,
+      quality: 0.6,
       videoMaxDuration: 60,
     });
     if (!result.canceled) {

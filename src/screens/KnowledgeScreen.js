@@ -334,8 +334,10 @@ const styles = StyleSheet.create({
   subjectChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: 6,
     flexShrink: 0,
+    minHeight: 34,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 16,
@@ -344,9 +346,10 @@ const styles = StyleSheet.create({
   subjectChipPress: {
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   subjectChipActive: { backgroundColor: '#333' },
-  subjectChipText: { fontSize: 13, color: '#666' },
+  subjectChipText: { fontSize: 13, color: '#666', flexShrink: 0 },
   subjectChipTextActive: { color: '#fff' },
   list: { padding: 12, gap: 12 },
   card: {

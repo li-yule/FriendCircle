@@ -8,7 +8,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 function normalizeItems(items) {
   if (!Array.isArray(items)) return [];
@@ -35,13 +35,16 @@ function ImageSlide({ uri }) {
       <ScrollView
         style={styles.zoomWrap}
         contentContainerStyle={styles.zoomContent}
-        maximumZoomScale={4}
+        maximumZoomScale={5}
         minimumZoomScale={1}
         pinchGestureEnabled
         bouncesZoom
         scrollEnabled={true}
         scrollEventThrottle={16}
         bounces={true}
+        centerContent
+        nestedScrollEnabled
+        directionalLockEnabled={false}
       >
         <Image 
           source={{ uri }} 
@@ -255,13 +258,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#050505',
   },
   zoomContent: { 
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   image: {
-    width: '100%',
-    height: '100%',
+    width: SCREEN_WIDTH - 24,
+    height: SCREEN_HEIGHT * 0.72,
   },
   video: {
     width: '100%',

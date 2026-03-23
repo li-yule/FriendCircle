@@ -11,6 +11,8 @@ import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import { formatTime, generateId } from '../utils/helpers';
 
+const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😍', '🥰', '😘', '😋', '😎', '🤩', '🥹', '😭', '😅', '😤', '😴', '🤔', '🫡', '🙌', '👏', '👍', '👎', '👌', '💪', '🙏', '🎉', '✨', '🔥', '🌟', '❤️', '💛', '💙', '🍀', '🌈', '📚', '🧠', '✍️', '✅', '💯'];
+
 export default function KnowledgeDetailScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
   const { currentUser, users } = state;
@@ -24,6 +26,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   const [commentAudioFiles, setCommentAudioFiles] = useState([]);
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   if (!liveItem) {
     navigation.goBack();
@@ -58,9 +61,10 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   const openImageViewer = (uri) => {
     const index = knowledgeMediaSections.findIndex(item => item.uri === uri);
     if (index < 0) return;
-    navigation.navigate('KnowledgeMediaViewer', {
-      initialKnowledgeId: liveItem.id,
-      initialItemIndex: index,
+    navigation.navigate('MediaViewer', {
+      items: knowledgeMediaSections,
+      initialIndex: index,
+      sourceTab: 'KnowledgeTab',
     });
   };
 
@@ -193,6 +197,11 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     setCommentImages([]);
     setCommentAudioFiles([]);
     setReplyTarget(null);
+    setShowEmojiPicker(false);
+  };
+
+  const appendEmoji = (emoji) => {
+    setCommentText(prev => `${prev}${emoji}`.slice(0, 500));
   };
 
   const handleDelete = () => {
@@ -226,7 +235,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}>
       {/* 顶部导航 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -412,7 +421,10 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         <Text style={styles.commentTitle}>讨论 ({(liveItem.comments || []).length})</Text>
         {(liveItem.comments || []).map(c => {
           const cu = users.find(u => u.id === c.userId) || { name: '未知', avatarColor: '#ccc' };
-          const replyingName = c.replyToUserName || (users.find(u => u.id === c.replyToUserId)?.name || '');
+          const rawReplyName = String(c.replyToUserName || '').trim();
+          const replyingName = (rawReplyName && rawReplyName !== '未知' && rawReplyName !== '未知用户')
+            ? rawReplyName
+            : (users.find(u => u.id === c.replyToUserId)?.name || '');
           return (
             <TouchableOpacity
               key={c.id}
@@ -480,6 +492,9 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             multiline
           />
           <View style={styles.commentToolbar}>
+            <TouchableOpacity onPress={() => setShowEmojiPicker(prev => !prev)}>
+              <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={20} color="#4ECDC4" />
+            </TouchableOpacity>
             <TouchableOpacity onPress={pickCommentImages}>
               <Ionicons name="image-outline" size={20} color="#4ECDC4" />
             </TouchableOpacity>
@@ -490,6 +505,15 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
               <Ionicons name="folder-open-outline" size={20} color="#4ECDC4" />
             </TouchableOpacity>
           </View>
+          {showEmojiPicker && (
+            <View style={styles.emojiPanel}>
+              {COMMON_EMOJIS.map(emoji => (
+                <TouchableOpacity key={emoji} style={styles.emojiItem} onPress={() => appendEmoji(emoji)}>
+                  <Text style={styles.emojiText}>{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           {commentImages.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.commentMediaScroll}>
               <View style={styles.commentMediaRow}>
@@ -632,6 +656,22 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingHorizontal: 4,
   },
+  emojiPanel: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingTop: 2,
+  },
+  emojiItem: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F7FCFB',
+  },
+  emojiText: { fontSize: 18 },
   commentMediaScroll: {
     marginTop: 8,
   },

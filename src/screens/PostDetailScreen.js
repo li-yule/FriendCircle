@@ -9,7 +9,7 @@ import { Avatar } from '../components/Avatar';
 import { formatTime, generateId } from '../utils/helpers';
 import VideoPreviewCard from '../components/VideoPreviewCard';
 
-const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
+const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😍', '🥰', '😘', '😋', '😎', '🤩', '🥹', '😭', '😅', '😤', '😴', '🤔', '🫡', '🙌', '👏', '👍', '👎', '👌', '💪', '🙏', '🎉', '✨', '🔥', '🌟', '❤️', '💛', '💙', '🍀', '🌈', '📚', '🧠', '✍️', '✅', '💯'];
 
 export default function PostDetailScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
@@ -22,6 +22,15 @@ export default function PostDetailScreen({ navigation, route }) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const getUserById = id => users.find(user => user.id === id) || { name: '未知用户', avatarColor: '#ccc' };
+  const resolveReplyingName = (comment) => {
+    const rawName = String(comment?.replyToUserName || '').trim();
+    if (rawName && rawName !== '未知' && rawName !== '未知用户') return rawName;
+    if (comment?.replyToUserId) {
+      const target = users.find(user => user.id === comment.replyToUserId);
+      return target?.name || '';
+    }
+    return '';
+  };
 
   const mediaItems = useMemo(() => {
     if (!livePost) return [];
@@ -108,8 +117,8 @@ export default function PostDetailScreen({ navigation, route }) {
   return (
     <KeyboardAvoidingView 
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={60}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
     >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -173,7 +182,7 @@ export default function PostDetailScreen({ navigation, route }) {
         <Text style={styles.commentTitle}>评论</Text>
         {(livePost.comments || []).map(comment => {
           const commentUser = getUserById(comment.userId);
-          const replyingName = comment.replyToUserName || (comment.replyToUserId ? getUserById(comment.replyToUserId)?.name : null);
+          const replyingName = resolveReplyingName(comment);
           return (
             <TouchableOpacity
               key={comment.id}
@@ -247,7 +256,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0F0',
   },
   headerTitle: { fontSize: 17, fontWeight: '600', color: '#333' },
-  body: { padding: 14, gap: 12, paddingBottom: 110 },
+  body: { padding: 14, gap: 12, paddingBottom: 16 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   authorInfo: { flex: 1 },
   authorName: { fontSize: 15, fontWeight: '700', color: '#333' },
@@ -269,10 +278,6 @@ const styles = StyleSheet.create({
   commentText: { fontSize: 14, color: '#444', marginTop: 2, lineHeight: 20 },
   commentTime: { fontSize: 11, color: '#bbb', marginTop: 5 },
   inputBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#ECECEC',

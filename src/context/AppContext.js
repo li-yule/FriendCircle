@@ -8,9 +8,9 @@ import { isSupabaseConfigured, mediaBucketName, supabase } from '../lib/supabase
 const AppContext = createContext(null);
 const DEFAULT_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF85A1', '#87CEEB', '#95E1D3'];
 const CLOUD_CONFIG_REQUIRED_MESSAGE = '当前版本仅支持云端存储，请先配置 Supabase 环境变量后再使用。';
-const CLOUD_POSTS_LIMIT = 120;
-const CLOUD_PLANS_LIMIT = 120;
-const CLOUD_KNOWLEDGE_LIMIT = 120;
+const CLOUD_POSTS_LIMIT = 80;
+const CLOUD_PLANS_LIMIT = 80;
+const CLOUD_KNOWLEDGE_LIMIT = 80;
 
 const initialState = {
   currentUser: null,
@@ -632,10 +632,25 @@ async function prepareKnowledgePayload(userId, payload) {
 
 async function fetchCloudState(currentUserId) {
   const [profilesRes, postsRes, plansRes, knowledgeRes] = await Promise.all([
-    supabase.from('profiles').select('*').order('created_at', { ascending: true }),
-    supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(CLOUD_POSTS_LIMIT),
-    supabase.from('plans').select('*').order('date', { ascending: false }).limit(CLOUD_PLANS_LIMIT),
-    supabase.from('knowledge').select('*').order('created_at', { ascending: false }).limit(CLOUD_KNOWLEDGE_LIMIT),
+    supabase
+      .from('profiles')
+      .select('id,account,name,bio,avatar,avatar_color,friends,subjects,created_at')
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('posts')
+      .select('id,user_id,text,images,videos,likes,comments,created_at')
+      .order('created_at', { ascending: false })
+      .limit(CLOUD_POSTS_LIMIT),
+    supabase
+      .from('plans')
+      .select('id,user_id,title,date,tasks,reminder_at,created_at')
+      .order('date', { ascending: false })
+      .limit(CLOUD_PLANS_LIMIT),
+    supabase
+      .from('knowledge')
+      .select('id,user_id,subject,question,wrong_answer,correct_answer,summary,images,question_images,wrong_answer_images,correct_answer_images,summary_images,audio_files,tags,likes,comments,created_at,type')
+      .order('created_at', { ascending: false })
+      .limit(CLOUD_KNOWLEDGE_LIMIT),
   ]);
 
   const error = profilesRes.error || postsRes.error || plansRes.error || knowledgeRes.error;
@@ -674,6 +689,8 @@ export function AppProvider({ children }) {
       return undefined;
     }
 
+    baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+
     let active = true;
 
     const hydrate = async (userId) => {
@@ -683,7 +700,7 @@ export function AppProvider({ children }) {
       baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
     };
 
-    const scheduleHydrate = (userId, delay = 250) => {
+    const scheduleHydrate = (userId, delay = 700) => {
       if (!userId) return;
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
@@ -988,8 +1005,7 @@ export function AppProvider({ children }) {
       }
 
       if (['UPDATE_PROFILE', 'ADD_FRIEND', 'REMOVE_FRIEND', 'ADD_SUBJECT', 'REMOVE_SUBJECT'].includes(action.type)) {
-        const snapshot = await fetchCloudState(currentUser.id);
-        baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+        baseDispatch(action);
       }
       return { ok: true };
     } catch (error) {

@@ -10,7 +10,7 @@ import VideoPreviewCard from '../components/VideoPreviewCard';
 import { formatDateKey, generateId, formatTime, toDateKey } from '../utils/helpers';
 import DatePickerSheet from '../components/DatePickerSheet';
 
-const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
+const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😍', '🥰', '😘', '😋', '😎', '🤩', '🥹', '😭', '😅', '😤', '😴', '🤔', '🫡', '🙌', '👏', '👍', '👎', '👌', '💪', '🙏', '🎉', '✨', '🔥', '🌟', '❤️', '💛', '💙', '🍀', '🌈', '📚', '🧠', '✍️', '✅', '💯'];
 
 export default function FeedScreen({ navigation }) {
   const { state, dispatch } = useApp();
@@ -24,6 +24,15 @@ export default function FeedScreen({ navigation }) {
   const [datePickerVisible, setDatePickerVisible] = useState(false);
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
+  const resolveReplyingName = (comment) => {
+    const rawName = String(comment?.replyToUserName || '').trim();
+    if (rawName && rawName !== '未知' && rawName !== '未知用户') return rawName;
+    if (comment?.replyToUserId) {
+      const target = users.find(user => user.id === comment.replyToUserId);
+      return target?.name || '';
+    }
+    return '';
+  };
   const visibleUserIds = new Set([currentUser.id, ...(currentUser.friends || [])]);
 
   const buildPostMediaItems = (post) => [
@@ -184,7 +193,7 @@ export default function FeedScreen({ navigation }) {
           <View style={styles.commentsSection}>
             {(item.comments || []).map(c => {
               const cu = getUserById(c.userId);
-              const replyingName = c.replyToUserName || (c.replyToUserId ? getUserById(c.replyToUserId)?.name : '');
+              const replyingName = resolveReplyingName(c);
               return (
                 <TouchableOpacity
                   key={c.id}
@@ -301,6 +310,7 @@ export default function FeedScreen({ navigation }) {
         renderItem={renderPost}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="images-outline" size={64} color="#ddd" />

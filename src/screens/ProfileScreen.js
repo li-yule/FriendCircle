@@ -41,7 +41,9 @@ export default function ProfileScreen({ navigation }) {
           id: comment.id,
           sourceType: 'post',
           sourceId: post.id,
+          sourcePreview: post.text || '动态内容',
           fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
+          isReplyToMe: comment.replyToUserId === currentUser.id,
           text: comment.text || '',
           createdAt: comment.createdAt,
         }))
@@ -56,7 +58,9 @@ export default function ProfileScreen({ navigation }) {
             id: comment.id,
             sourceType: 'knowledge',
             sourceId: item.id,
+            sourcePreview: item.question || '知识内容',
             fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
+            isReplyToMe: comment.replyToUserId === currentUser.id,
             text: comment.text || '',
             createdAt: comment.createdAt,
           }))
@@ -320,7 +324,10 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity key={`${item.sourceType}_${item.id}`} style={styles.interactionItem} onPress={() => openInteraction(item)}>
               <Avatar user={item.fromUser} size={28} />
               <View style={styles.interactionTextWrap}>
-                <Text style={styles.interactionTitle}>{item.fromUser.name} 评论了你</Text>
+                <Text style={styles.interactionTitle}>{item.fromUser.name}{item.isReplyToMe ? ' 回复了你' : ' 评论了你'}</Text>
+                <Text style={styles.interactionMeta} numberOfLines={1}>
+                  {item.sourceType === 'post' ? '动态' : '知识'}：{item.sourcePreview}
+                </Text>
                 <Text style={styles.interactionContent} numberOfLines={1}>{item.text || '（无文字内容）'}</Text>
               </View>
               <Text style={styles.interactionTime}>{formatTime(item.createdAt)}</Text>
@@ -483,6 +490,7 @@ const styles = StyleSheet.create({
   interactionItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
   interactionTextWrap: { flex: 1 },
   interactionTitle: { fontSize: 12, color: '#333', fontWeight: '600' },
+  interactionMeta: { fontSize: 11, color: '#9AA5AE', marginTop: 2 },
   interactionContent: { fontSize: 12, color: '#777', marginTop: 2 },
   interactionTime: { fontSize: 11, color: '#BBB' },
   sectionTitle: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 12 },
