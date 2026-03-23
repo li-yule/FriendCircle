@@ -42,7 +42,7 @@ export default function KnowledgeScreen({ navigation }) {
   const availableSubjects = ['all', ...new Set([
     ...(currentUser.subjects || []),
     ...visibleKnowledge.map(item => item.subject),
-  ])];
+  ])].filter(Boolean);
 
   const filtered = visibleKnowledge.filter(k => {
     const matchSubject = selectedSubject === 'all' || k.subject === selectedSubject;
@@ -329,12 +329,13 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   searchInput: { flex: 1, fontSize: 14, color: '#333' },
-  subjectScroll: { maxHeight: 56, marginBottom: 6 },
-  subjectList: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
+  subjectScroll: { marginBottom: 8 },
+  subjectList: { paddingHorizontal: 12, paddingVertical: 4, gap: 8, alignItems: 'center' },
   subjectChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 16,

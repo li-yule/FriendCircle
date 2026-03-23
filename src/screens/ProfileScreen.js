@@ -14,6 +14,7 @@ export default function ProfileScreen({ navigation }) {
   const { currentUser, users, posts, plans, knowledge } = state;
   const [tab, setTab] = useState('posts'); // 'posts' | 'plans' | 'friends'
   const [editing, setEditing] = useState(false);
+  const [showInteractions, setShowInteractions] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name || '');
   const [bioInput, setBioInput] = useState(currentUser.bio || '');
 
@@ -32,6 +33,58 @@ export default function ProfileScreen({ navigation }) {
       }, 0);
     return postComments + knowledgeComments;
   }, [currentUser.id, knowledge, myPosts]);
+  const incomingInteractions = useMemo(() => {
+    const postInteractions = myPosts.flatMap(post =>
+      (post.comments || [])
+        .filter(comment => comment.userId !== currentUser.id)
+        .map(comment => ({
+          id: comment.id,
+          sourceType: 'post',
+          sourceId: post.id,
+          fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
+          text: comment.text || '',
+          createdAt: comment.createdAt,
+        }))
+    );
+
+    const knowledgeInteractions = (knowledge || [])
+      .filter(item => item.userId === currentUser.id)
+      .flatMap(item =>
+        (item.comments || [])
+          .filter(comment => comment.userId !== currentUser.id)
+          .map(comment => ({
+            id: comment.id,
+            sourceType: 'knowledge',
+            sourceId: item.id,
+            fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
+            text: comment.text || '',
+            createdAt: comment.createdAt,
+          }))
+      );
+
+    return [...postInteractions, ...knowledgeInteractions]
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      .slice(0, 30);
+  }, [currentUser.id, knowledge, myPosts, users]);
+    const myPlanDailyProgress = useMemo(() => {
+      const map = new Map();
+      myPlans.forEach(plan => {
+        const key = formatDate(plan.date);
+        const done = (plan.tasks || []).filter(t => t.done).length;
+        const total = (plan.tasks || []).length;
+        if (!map.has(key)) {
+          map.set(key, { dateText: key, done: 0, total: 0, latest: plan.date });
+        }
+        const item = map.get(key);
+        item.done += done;
+        item.total += total;
+        if (new Date(plan.date) > new Date(item.latest)) {
+          item.latest = plan.date;
+        }
+      });
+      return Array.from(map.values()).sort((a, b) => new Date(b.latest) - new Date(a.latest));
+    }, [myPlans]);
+
   const myFriends = users.filter(u => (currentUser.friends || []).includes(u.id));
   const recommendFriends = users.filter(u => {
     if (u.id === currentUser.id) return false;
@@ -141,52 +194,51 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const renderPlan = (item) => {
-    const done = (item.tasks || []).filter(t => t.done).length;
-    const total = (item.tasks || []).length;
-
-    const handleDeletePlan = () => {
-      Alert.alert('删除规划', '确认删除这条规划？', [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            const result = await dispatch({ type: 'DELETE_PLAN', payload: item.id });
-            if (!result?.ok) {
-              Alert.alert('删除失败', result?.error || '请稍后重试');
-            }
-          },
-        },
-      ]);
-    };
+    const done = item.done;
+    const total = item.total;
+    const percent = total > 0 ? (done / total) * 100 : 0;
 
     return (
-      <View key={item.id} style={styles.planItem}>
+      <View key={item.dateText} style={styles.planItem}>
         <View style={styles.planItemHeader}>
-          <Text style={styles.planItemTitle}>{item.title || '规划'}</Text>
-          <View style={styles.planHeaderRight}>
-            <Text style={styles.planItemDate}>{formatDate(item.date)}</Text>
-            <TouchableOpacity onPress={handleDeletePlan}>
-              <Ionicons name="trash-outline" size={17} color="#FF6B6B" />
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.planItemTitle}>{item.dateText}</Text>
+          <Text style={styles.planItemDate}>每日进度</Text>
         </View>
-        {total > 0 && (
-          <View style={styles.planProgress}>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${(done / total) * 100}%` }]} />
-            </View>
-            <Text style={styles.progressLabel}>{done}/{total} 完成</Text>
+        <View style={styles.planProgress}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${percent}%` }]} />
           </View>
-        )}
+          <Text style={styles.progressLabel}>{done}/{total} 完成</Text>
+        </View>
       </View>
     );
+  };
+
+  const openInteraction = (interaction) => {
+    if (interaction.sourceType === 'post') {
+      navigation.navigate('PostDetail', { postId: interaction.sourceId });
+      return;
+    }
+    const targetKnowledge = (knowledge || []).find(item => item.id === interaction.sourceId);
+    if (targetKnowledge) {
+      navigation.navigate('KnowledgeDetail', { item: targetKnowledge });
+    }
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* 个人信息卡片 */}
       <View style={styles.profileCard}>
+        <View style={styles.profileCardTopRight}>
+          <TouchableOpacity style={styles.msgIconBtn} onPress={() => setShowInteractions(prev => !prev)}>
+            <Ionicons name="notifications-outline" size={18} color="#5B6763" />
+            {incomingCommentCount > 0 && (
+              <View style={styles.msgBadge}>
+                <Text style={styles.msgBadgeText}>{incomingCommentCount > 99 ? '99+' : incomingCommentCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
         <View style={styles.profileTop}>
           <Avatar user={currentUser} size={72} />
           <View style={styles.profileInfo}>
@@ -259,6 +311,24 @@ export default function ProfileScreen({ navigation }) {
         </View>
       )}
 
+      {showInteractions && (
+        <View style={styles.interactionPanel}>
+          <Text style={styles.sectionTitle}>互动消息</Text>
+          {incomingInteractions.length === 0 ? (
+            <Text style={styles.tipText}>暂无互动</Text>
+          ) : incomingInteractions.map(item => (
+            <TouchableOpacity key={`${item.sourceType}_${item.id}`} style={styles.interactionItem} onPress={() => openInteraction(item)}>
+              <Avatar user={item.fromUser} size={28} />
+              <View style={styles.interactionTextWrap}>
+                <Text style={styles.interactionTitle}>{item.fromUser.name} 评论了你</Text>
+                <Text style={styles.interactionContent} numberOfLines={1}>{item.text || '（无文字内容）'}</Text>
+              </View>
+              <Text style={styles.interactionTime}>{formatTime(item.createdAt)}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {/* Tab */}
       <View style={styles.tabs}>
         {[
@@ -290,10 +360,10 @@ export default function ProfileScreen({ navigation }) {
 
       {tab === 'plans' && (
         <View style={styles.planList}>
-          {myPlans.length === 0 ? (
+          {myPlanDailyProgress.length === 0 ? (
             <Text style={styles.emptyText}>还没有规划</Text>
           ) : (
-            myPlans.map(renderPlan)
+            myPlanDailyProgress.map(renderPlan)
           )}
         </View>
       )}
@@ -339,6 +409,33 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     marginBottom: 12,
   },
+  profileCardTopRight: {
+    position: 'absolute',
+    right: 16,
+    top: 18,
+    zIndex: 2,
+  },
+  msgIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F7F7',
+  },
+  msgBadge: {
+    position: 'absolute',
+    right: -4,
+    top: -4,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF6B6B',
+  },
+  msgBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   profileTop: { flexDirection: 'row', gap: 16, alignItems: 'center', marginBottom: 20 },
   profileInfo: { flex: 1 },
   profileName: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 6 },
@@ -376,6 +473,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   noticeText: { color: '#E67A2E', fontSize: 13, fontWeight: '600' },
+  interactionPanel: {
+    backgroundColor: '#fff',
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 12,
+    padding: 12,
+  },
+  interactionItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
+  interactionTextWrap: { flex: 1 },
+  interactionTitle: { fontSize: 12, color: '#333', fontWeight: '600' },
+  interactionContent: { fontSize: 12, color: '#777', marginTop: 2 },
+  interactionTime: { fontSize: 11, color: '#BBB' },
   sectionTitle: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 12 },
   userList: { flexDirection: 'row', gap: 12 },
   userChip: {

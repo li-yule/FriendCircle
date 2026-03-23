@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Image, ScrollView, Alert,
+  TextInput, Image, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -10,12 +10,15 @@ import VideoPreviewCard from '../components/VideoPreviewCard';
 import { formatDateKey, generateId, formatTime, toDateKey } from '../utils/helpers';
 import DatePickerSheet from '../components/DatePickerSheet';
 
+const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
+
 export default function FeedScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { posts, currentUser, users } = state;
   const [commentInput, setCommentInput] = useState({});
   const [replyTarget, setReplyTarget] = useState({});
   const [expandedComments, setExpandedComments] = useState({});
+  const [showEmojiPicker, setShowEmojiPicker] = useState({});
   const [timeFilter, setTimeFilter] = useState('all'); // 'all' | 'today' | 'date'
   const [selectedDate, setSelectedDate] = useState('');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -84,6 +87,10 @@ export default function FeedScreen({ navigation }) {
     navigation.navigate('PostDetail', { postId });
   };
 
+  const appendEmoji = (postId, emoji) => {
+    setCommentInput(prev => ({ ...prev, [postId]: `${prev[postId] || ''}${emoji}`.slice(0, 300) }));
+  };
+
   const handleDeletePost = (postId, authorId) => {
     if (authorId !== currentUser.id) return;
     Alert.alert('删除动态', '确认删除这条动态？', [
@@ -130,7 +137,12 @@ export default function FeedScreen({ navigation }) {
         {item.videos && item.videos.length > 0 && (
           <View style={styles.videoList}>
             {item.videos.map((uri, idx) => (
-              <View key={`${uri}_${idx}`} style={styles.videoCard}>
+              <TouchableOpacity
+                key={`${uri}_${idx}`}
+                style={styles.videoCard}
+                activeOpacity={0.9}
+                onPress={() => openPostMediaViewer(item, (item.images || []).length + idx)}
+              >
                 <VideoPreviewCard uri={uri} style={styles.postVideoPlaceholder} />
                 <TouchableOpacity
                   style={styles.expandBtn}
@@ -139,7 +151,7 @@ export default function FeedScreen({ navigation }) {
                   <Ionicons name="expand-outline" size={16} color="#fff" />
                   <Text style={styles.expandBtnText}>放大查看</Text>
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -172,7 +184,7 @@ export default function FeedScreen({ navigation }) {
           <View style={styles.commentsSection}>
             {(item.comments || []).map(c => {
               const cu = getUserById(c.userId);
-              const replyingName = c.replyToUserName || getUserById(c.replyToUserId)?.name;
+              const replyingName = c.replyToUserName || (c.replyToUserId ? getUserById(c.replyToUserId)?.name : '');
               return (
                 <TouchableOpacity
                   key={c.id}
@@ -199,6 +211,9 @@ export default function FeedScreen({ navigation }) {
             )}
             <View style={styles.commentInputRow}>
               <Avatar user={currentUser} size={28} />
+              <TouchableOpacity onPress={() => setShowEmojiPicker(prev => ({ ...prev, [item.id]: !prev[item.id] }))}>
+                <Ionicons name={showEmojiPicker[item.id] ? 'happy' : 'happy-outline'} size={18} color="#4ECDC4" />
+              </TouchableOpacity>
               <TextInput
                 style={styles.commentInput}
                 placeholder={replyTarget[item.id] ? `回复 ${replyTarget[item.id].name}...` : '写评论...'}
@@ -206,11 +221,21 @@ export default function FeedScreen({ navigation }) {
                 onChangeText={val => setCommentInput(prev => ({ ...prev, [item.id]: val }))}
                 onSubmitEditing={() => handleAddComment(item.id)}
                 returnKeyType="send"
+                maxLength={300}
               />
               <TouchableOpacity onPress={() => handleAddComment(item.id)}>
                 <Ionicons name="send" size={18} color="#4ECDC4" />
               </TouchableOpacity>
             </View>
+            {showEmojiPicker[item.id] && (
+              <View style={styles.emojiPanel}>
+                {COMMON_EMOJIS.map(emoji => (
+                  <TouchableOpacity key={`${item.id}_${emoji}`} style={styles.emojiItem} onPress={() => appendEmoji(item.id, emoji)}>
+                    <Text style={styles.emojiText}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -218,7 +243,11 @@ export default function FeedScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 18 : 0}
+    >
       {/* 顶部栏 */}
       <View style={styles.topBar}>
         <Text style={styles.title}>动态</Text>
@@ -271,6 +300,7 @@ export default function FeedScreen({ navigation }) {
         keyExtractor={item => item.id}
         renderItem={renderPost}
         contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="images-outline" size={64} color="#ddd" />
@@ -278,7 +308,7 @@ export default function FeedScreen({ navigation }) {
           </View>
         }
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -377,6 +407,21 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   commentInput: { flex: 1, fontSize: 14, color: '#333' },
+  emojiPanel: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingTop: 2,
+  },
+  emojiItem: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4FBFA',
+  },
+  emojiText: { fontSize: 17 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 100 },
   emptyText: { color: '#bbb', fontSize: 14, marginTop: 12, textAlign: 'center' },
 });

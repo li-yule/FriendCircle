@@ -8,6 +8,9 @@ import { isSupabaseConfigured, mediaBucketName, supabase } from '../lib/supabase
 const AppContext = createContext(null);
 const DEFAULT_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF85A1', '#87CEEB', '#95E1D3'];
 const CLOUD_CONFIG_REQUIRED_MESSAGE = '当前版本仅支持云端存储，请先配置 Supabase 环境变量后再使用。';
+const CLOUD_POSTS_LIMIT = 120;
+const CLOUD_PLANS_LIMIT = 120;
+const CLOUD_KNOWLEDGE_LIMIT = 120;
 
 const initialState = {
   currentUser: null,
@@ -145,6 +148,7 @@ function normalizePlan(item) {
       done: Boolean(task?.done),
       reminderTime: task?.reminderTime || '',
     })),
+    reminderAt: item?.reminderAt || item?.reminder_at || '',
     createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
   };
 }
@@ -208,6 +212,7 @@ function serializePlan(plan) {
     title: normalized.title,
     date: normalized.date,
     tasks: normalized.tasks,
+    reminder_at: normalized.reminderAt || null,
     created_at: normalized.createdAt,
   };
 }
@@ -628,9 +633,9 @@ async function prepareKnowledgePayload(userId, payload) {
 async function fetchCloudState(currentUserId) {
   const [profilesRes, postsRes, plansRes, knowledgeRes] = await Promise.all([
     supabase.from('profiles').select('*').order('created_at', { ascending: true }),
-    supabase.from('posts').select('*').order('created_at', { ascending: false }),
-    supabase.from('plans').select('*').order('date', { ascending: true }),
-    supabase.from('knowledge').select('*').order('created_at', { ascending: false }),
+    supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(CLOUD_POSTS_LIMIT),
+    supabase.from('plans').select('*').order('date', { ascending: false }).limit(CLOUD_PLANS_LIMIT),
+    supabase.from('knowledge').select('*').order('created_at', { ascending: false }).limit(CLOUD_KNOWLEDGE_LIMIT),
   ]);
 
   const error = profilesRes.error || postsRes.error || plansRes.error || knowledgeRes.error;
@@ -752,13 +757,11 @@ export function AppProvider({ children }) {
       if (action.type === 'LOGIN') {
         const account = normalizeAccount(action.payload?.account);
         const password = action.payload?.password || '';
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email: buildAuthEmail(account),
           password,
         });
         if (error) return { ok: false, error: getFriendlyErrorMessage(error, '登录失败') };
-        const snapshot = await fetchCloudState(data.user.id);
-        baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
         return { ok: true };
       }
 
@@ -801,8 +804,6 @@ export function AppProvider({ children }) {
           return { ok: false, error: '注册成功，但创建资料失败，请检查 Supabase 表结构' };
         }
 
-        const snapshot = await fetchCloudState(authUserId);
-        baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
         return { ok: true };
       }
 

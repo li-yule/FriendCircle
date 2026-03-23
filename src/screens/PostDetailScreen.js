@@ -9,7 +9,7 @@ import { Avatar } from '../components/Avatar';
 import { formatTime, generateId } from '../utils/helpers';
 import VideoPreviewCard from '../components/VideoPreviewCard';
 
-const COMMON_EMOJIS = ['😀', '😂', '😍', '🥹', '😭', '😅', '👍', '👏', '🎉', '❤️', '🔥', '✨'];
+const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
 
 export default function PostDetailScreen({ navigation, route }) {
   const { state, dispatch } = useApp();

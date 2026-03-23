@@ -35,6 +35,10 @@ function ImageSlide({ uri }) {
       <ScrollView
         style={styles.zoomWrap}
         contentContainerStyle={styles.zoomContent}
+        maximumZoomScale={4}
+        minimumZoomScale={1}
+        pinchGestureEnabled
+        bouncesZoom
         scrollEnabled={true}
         scrollEventThrottle={16}
         bounces={true}
@@ -240,7 +244,7 @@ const styles = StyleSheet.create({
   },
   slide: {
     width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH,
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,

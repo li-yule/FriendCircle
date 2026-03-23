@@ -10,7 +10,7 @@ import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import { generateId } from '../utils/helpers';
 
-const COMMON_EMOJIS = ['😀', '😂', '😍', '🥹', '😭', '😅', '👍', '👏', '🎉', '❤️', '🔥', '✨'];
+const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
 
 export default function NewPostScreen({ navigation }) {
   const { state, dispatch } = useApp();

@@ -4,6 +4,7 @@ import {
   ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { useApp } from '../context/AppContext';
 import { formatDateKey, generateId, toDateKey } from '../utils/helpers';
 import DatePickerSheet from '../components/DatePickerSheet';
@@ -14,6 +15,8 @@ export default function NewPlanScreen({ navigation }) {
 
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getTodayStr());
+  const [enableReminder, setEnableReminder] = useState(false);
+  const [reminderTime, setReminderTime] = useState('21:00');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -27,6 +30,34 @@ export default function NewPlanScreen({ navigation }) {
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() + offsetDays);
     setDate(toDateKey(d));
+  };
+
+  const scheduleReminder = async (titleText, dateText, timeText) => {
+    const [hourStr, minuteStr] = String(timeText).split(':');
+    const hour = Number(hourStr);
+    const minute = Number(minuteStr);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return;
+    }
+
+    const triggerDate = new Date(`${dateText}T00:00:00`);
+    triggerDate.setHours(hour, minute, 0, 0);
+    if (triggerDate.getTime() <= Date.now() + 1000 * 30) {
+      return;
+    }
+
+    const permission = await Notifications.requestPermissionsAsync();
+    if (!permission.granted) {
+      return;
+    }
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '规划提醒',
+        body: `别忘了：${titleText}`,
+      },
+      trigger: triggerDate,
+    });
   };
 
   const handleSubmit = async () => {
@@ -55,6 +86,11 @@ export default function NewPlanScreen({ navigation }) {
       return;
     }
 
+    if (enableReminder && !/^([01]\d|2[0-3]):([0-5]\d)$/.test(reminderTime)) {
+      Alert.alert('提示', '提醒时间格式应为 HH:mm，例如 21:00');
+      return;
+    }
+
     setIsSubmitting(true);
     const result = await dispatch({
       type: 'ADD_PLAN',
@@ -64,6 +100,7 @@ export default function NewPlanScreen({ navigation }) {
         title: trimmedTitle,
         date: pickedDate.toISOString(),
         tasks: [],
+        reminderAt: enableReminder ? `${date} ${reminderTime}` : '',
         createdAt: new Date().toISOString(),
       },
     });
@@ -71,6 +108,9 @@ export default function NewPlanScreen({ navigation }) {
       setIsSubmitting(false);
       Alert.alert('发布失败', result?.error || '请稍后重试');
       return;
+    }
+    if (enableReminder) {
+      scheduleReminder(trimmedTitle, date, reminderTime).catch(() => {});
     }
     setIsSubmitting(false);
     navigation.goBack();
@@ -132,6 +172,30 @@ export default function NewPlanScreen({ navigation }) {
               <Text style={styles.quickDateText}>一周后</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.fieldCard}>
+          <View style={styles.reminderHeader}>
+            <Text style={styles.label}>时间提醒</Text>
+            <TouchableOpacity style={[styles.reminderToggle, enableReminder && styles.reminderToggleOn]} onPress={() => setEnableReminder(prev => !prev)}>
+              <Text style={[styles.reminderToggleText, enableReminder && styles.reminderToggleTextOn]}>{enableReminder ? '已开启' : '未开启'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {enableReminder && (
+            <View style={styles.reminderInputRow}>
+              <Ionicons name="alarm-outline" size={16} color="#FF6B6B" />
+              <TextInput
+                style={styles.reminderInput}
+                placeholder="HH:mm"
+                value={reminderTime}
+                onChangeText={setReminderTime}
+                maxLength={5}
+                keyboardType="numbers-and-punctuation"
+              />
+            </View>
+          )}
+          <Text style={styles.reminderHint}>支持本地提醒，示例：07:30、21:00。</Text>
         </View>
 
         <View style={styles.todayTip}>
@@ -235,6 +299,29 @@ const styles = StyleSheet.create({
     borderColor: '#FFE3E3',
   },
   quickDateText: { color: '#E37272', fontSize: 12, fontWeight: '600' },
+  reminderHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  reminderToggle: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#F1F1F1',
+  },
+  reminderToggleOn: { backgroundColor: '#FFEAEA' },
+  reminderToggleText: { fontSize: 12, color: '#777', fontWeight: '600' },
+  reminderToggleTextOn: { color: '#FF6B6B' },
+  reminderInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#FFD5D5',
+    borderRadius: 12,
+    backgroundColor: '#FFF7F7',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  reminderInput: { flex: 1, fontSize: 14, color: '#D95555', fontWeight: '600' },
+  reminderHint: { fontSize: 12, color: '#B88686' },
   todayTip: {
     flexDirection: 'row',
     gap: 8,
