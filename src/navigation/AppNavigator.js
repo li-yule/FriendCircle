@@ -117,10 +117,23 @@ function LoadingScreen() {
 }
 
 export default function AppNavigator() {
-  const { state } = useApp();
+  const { state, isCloudEnabled } = useApp();
 
   if (!state.loaded) {
     return <LoadingScreen />;
+  }
+
+  if (!isCloudEnabled) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24, backgroundColor: '#F2F6F5' }}>
+        <View style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: '#1E2A28', marginBottom: 8 }}>云端配置未完成</Text>
+          <Text style={{ fontSize: 14, color: '#5E6A67', lineHeight: 21 }}>
+            当前版本仅支持 Supabase 云端存储。请在运行环境中配置 EXPO_PUBLIC_SUPABASE_URL、EXPO_PUBLIC_SUPABASE_ANON_KEY 与 EXPO_PUBLIC_SUPABASE_MEDIA_BUCKET，然后重启应用。
+          </Text>
+        </View>
+      </View>
+    );
   }
 
   return (
