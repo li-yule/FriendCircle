@@ -6,6 +6,10 @@ function normalizeAccount(value) {
   return (value || '').trim().toLowerCase();
 }
 
+function isValidAccount(value) {
+  return /^[a-z0-9_.-]{3,32}$/.test(value);
+}
+
 export default function RegisterScreen({ navigation }) {
   const { dispatch } = useApp();
   const [name, setName] = useState('');
@@ -15,18 +19,25 @@ export default function RegisterScreen({ navigation }) {
 
   const handleRegister = async () => {
     const accountValue = normalizeAccount(account);
+    const passwordValue = password.trim();
+    const confirmPasswordValue = confirmPassword.trim();
 
-    if (!name.trim() || !accountValue || !password.trim()) {
+    if (!name.trim() || !accountValue || !passwordValue) {
       Alert.alert('提示', '请完整填写昵称、账号、密码');
       return;
     }
 
-    if (password.length < 6) {
+    if (!isValidAccount(accountValue)) {
+      Alert.alert('提示', '账号仅支持 3-32 位字母、数字或 . _ -');
+      return;
+    }
+
+    if (passwordValue.length < 6) {
       Alert.alert('提示', '密码至少 6 位');
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (passwordValue !== confirmPasswordValue) {
       Alert.alert('提示', '两次输入的密码不一致');
       return;
     }
@@ -36,7 +47,7 @@ export default function RegisterScreen({ navigation }) {
       payload: {
         name: name.trim(),
         account: accountValue,
-        password,
+        password: passwordValue,
       },
     });
 
@@ -59,7 +70,7 @@ export default function RegisterScreen({ navigation }) {
         />
         <TextInput
           style={styles.input}
-          placeholder="账号（英文或数字）"
+          placeholder="账号（3-32位：字母/数字/._-）"
           autoCapitalize="none"
           value={account}
           onChangeText={setAccount}

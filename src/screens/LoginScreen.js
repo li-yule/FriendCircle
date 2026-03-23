@@ -6,6 +6,10 @@ function normalizeAccount(value) {
   return (value || '').trim().toLowerCase();
 }
 
+function isValidAccount(value) {
+  return /^[a-z0-9_.-]{3,32}$/.test(value);
+}
+
 export default function LoginScreen({ navigation }) {
   const { dispatch, isCloudEnabled } = useApp();
   const [account, setAccount] = useState('');
@@ -17,6 +21,11 @@ export default function LoginScreen({ navigation }) {
 
     if (!accountValue || !passwordValue) {
       Alert.alert('提示', '请输入账号和密码');
+      return;
+    }
+
+    if (!isValidAccount(accountValue)) {
+      Alert.alert('提示', '账号仅支持 3-32 位字母、数字或 . _ -');
       return;
     }
 

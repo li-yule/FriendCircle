@@ -30,6 +30,10 @@ function normalizeAccount(value) {
   return (value || '').trim().toLowerCase();
 }
 
+function isValidAccount(value) {
+  return /^[a-z0-9_.-]{3,32}$/.test(normalizeAccount(value));
+}
+
 function toUniqueStrings(value) {
   const result = [];
   const seen = new Set();
@@ -669,6 +673,8 @@ function getFriendlyErrorMessage(error, fallback) {
   if (/invalid login credentials/i.test(message)) return '账号或密码错误';
   if (/user already registered/i.test(message)) return '该账号已被注册';
   if (/email rate limit exceeded/i.test(message)) return '请求过于频繁，请稍后再试';
+  if (/invalid email|unable to validate email address/i.test(message)) return '账号格式不正确，请使用 3-32 位字母、数字或 . _ -';
+  if (/database error saving new user/i.test(message)) return '注册失败，请检查 Supabase 的数据库触发器或重试';
   if (/email not confirmed/i.test(message)) return '当前 Supabase 开启了邮箱确认，请先关闭 Confirm email';
   return fallback;
 }
@@ -773,7 +779,16 @@ export function AppProvider({ children }) {
     try {
       if (action.type === 'LOGIN') {
         const account = normalizeAccount(action.payload?.account);
-        const password = action.payload?.password || '';
+        const password = (action.payload?.password || '').trim();
+
+        if (!isValidAccount(account)) {
+          return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
+        }
+
+        if (!password) {
+          return { ok: false, error: '请输入密码' };
+        }
+
         const { error } = await supabase.auth.signInWithPassword({
           email: buildAuthEmail(account),
           password,
@@ -784,8 +799,16 @@ export function AppProvider({ children }) {
 
       if (action.type === 'REGISTER') {
         const account = normalizeAccount(action.payload?.account);
-        const password = action.payload?.password || '';
+        const password = (action.payload?.password || '').trim();
         const email = buildAuthEmail(account);
+
+        if (!isValidAccount(account)) {
+          return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
+        }
+
+        if (password.length < 6) {
+          return { ok: false, error: '密码至少 6 位' };
+        }
 
         const signUpRes = await supabase.auth.signUp({ email, password });
         if (signUpRes.error) {
