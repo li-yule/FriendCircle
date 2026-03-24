@@ -11,6 +11,9 @@ const CLOUD_CONFIG_REQUIRED_MESSAGE = '当前版本仅支持云端存储，请�
 const CLOUD_POSTS_LIMIT = 80;
 const CLOUD_PLANS_LIMIT = 80;
 const CLOUD_KNOWLEDGE_LIMIT = 80;
+const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_UPLOAD_BYTES = 30 * 1024 * 1024;
+const LOCAL_MUTATION_MUTE_MS = 2500;
 
 const initialState = {
   currentUser: null,
@@ -216,7 +219,6 @@ function serializePlan(plan) {
     title: normalized.title,
     date: normalized.date,
     tasks: normalized.tasks,
-    reminder_at: normalized.reminderAt || null,
     created_at: normalized.createdAt,
   };
 }
@@ -241,7 +243,6 @@ function serializeKnowledge(item) {
     likes: normalized.likes,
     comments: normalized.comments,
     created_at: normalized.createdAt,
-    type: normalized.type,
   };
 }
 
@@ -570,6 +571,18 @@ function reducer(state, action) {
       };
     }
 
+    case 'DELETE_KNOWLEDGE_COMMENT': {
+      const { knowledgeId, commentId } = action.payload;
+      return {
+        ...state,
+        knowledge: state.knowledge.map(item =>
+          item.id === knowledgeId
+            ? { ...item, comments: (item.comments || []).filter(comment => comment.id !== commentId) }
+            : item
+        ),
+      };
+    }
+
     default:
       return state;
   }
@@ -611,6 +624,14 @@ function isRemoteAsset(uri) {
 
 async function uploadAssetIfNeeded(userId, uri, folder) {
   if (!uri || isRemoteAsset(uri) || !supabase) return uri;
+
+  const info = await FileSystem.getInfoAsync(uri, { size: true });
+  const size = Number(info?.size || 0);
+  const isVideoFile = folder.includes('video');
+  const maxBytes = isVideoFile ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+  if (size > maxBytes) {
+    throw new Error(isVideoFile ? '视频文件过大，请控制在 30MB 以内' : '图片文件过大，请控制在 10MB 以内');
+  }
 
   const extension = inferFileExtension(uri, folder.includes('audio') ? 'm4a' : 'jpg');
   const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -679,12 +700,12 @@ async function fetchCloudState(currentUserId) {
       .limit(CLOUD_POSTS_LIMIT),
     supabase
       .from('plans')
-      .select('id,user_id,title,date,tasks,reminder_at,created_at')
+      .select('id,user_id,title,date,tasks,created_at')
       .order('date', { ascending: false })
       .limit(CLOUD_PLANS_LIMIT),
     supabase
       .from('knowledge')
-      .select('id,user_id,subject,question,wrong_answer,correct_answer,summary,images,question_images,wrong_answer_images,correct_answer_images,summary_images,audio_files,tags,likes,comments,created_at,type')
+      .select('id,user_id,subject,question,wrong_answer,correct_answer,summary,images,question_images,wrong_answer_images,correct_answer_images,summary_images,audio_files,tags,likes,comments,created_at')
       .order('created_at', { ascending: false })
       .limit(CLOUD_KNOWLEDGE_LIMIT),
   ]);
@@ -729,7 +750,7 @@ async function fetchCloudPatch(tables) {
     tasks.push(
       supabase
         .from('plans')
-        .select('id,user_id,title,date,tasks,reminder_at,created_at')
+        .select('id,user_id,title,date,tasks,created_at')
         .order('date', { ascending: false })
         .limit(CLOUD_PLANS_LIMIT)
         .then(res => ({ key: 'plans', ...res }))
@@ -740,7 +761,7 @@ async function fetchCloudPatch(tables) {
     tasks.push(
       supabase
         .from('knowledge')
-        .select('id,user_id,subject,question,wrong_answer,correct_answer,summary,images,question_images,wrong_answer_images,correct_answer_images,summary_images,audio_files,tags,likes,comments,created_at,type')
+        .select('id,user_id,subject,question,wrong_answer,correct_answer,summary,images,question_images,wrong_answer_images,correct_answer_images,summary_images,audio_files,tags,likes,comments,created_at')
         .order('created_at', { ascending: false })
         .limit(CLOUD_KNOWLEDGE_LIMIT)
         .then(res => ({ key: 'knowledge', ...res }))
@@ -801,6 +822,8 @@ function getFriendlyErrorMessage(error, fallback) {
   if (/email rate limit exceeded/i.test(message)) return '请求过于频繁，请稍后再试';
   if (/invalid email|unable to validate email address/i.test(message)) return '账号格式不正确，请使用 3-32 位字母、数字或 . _ -';
   if (/database error saving new user/i.test(message)) return '注册失败，请检查 Supabase 的数据库触发器或重试';
+  if (/column .* does not exist/i.test(message)) return '云端表结构版本较旧，请在 Supabase 执行最新 schema.sql';
+  if (/文件过大|too large|payload too large|request entity too large/i.test(message)) return '文件过大，请压缩后再上传';
   if (/email not confirmed/i.test(message)) return '当前 Supabase 开启了邮箱确认，请先关闭 Confirm email';
   return fallback;
 }
@@ -811,6 +834,12 @@ export function AppProvider({ children }) {
   const cloudUserIdRef = useRef(null);
   const refreshTimerRef = useRef(null);
   const pendingTablesRef = useRef(new Set());
+  const localMutationMuteRef = useRef({
+    profiles: 0,
+    posts: 0,
+    plans: 0,
+    knowledge: 0,
+  });
 
   useEffect(() => {
     stateRef.current = state;
@@ -861,6 +890,11 @@ export function AppProvider({ children }) {
       }, delay);
     };
 
+    const shouldMuteTableSync = (table) => {
+      const mutedAt = Number(localMutationMuteRef.current?.[table] || 0);
+      return Date.now() - mutedAt < LOCAL_MUTATION_MUTE_MS;
+    };
+
     const loadCloud = async () => {
       try {
         const { data } = await supabase.auth.getSession();
@@ -892,10 +926,22 @@ export function AppProvider({ children }) {
 
     const channel = supabase
       .channel('friendcircle-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => scheduleHydrate(cloudUserIdRef.current, ['profiles']))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => scheduleHydrate(cloudUserIdRef.current, ['posts']))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => scheduleHydrate(cloudUserIdRef.current, ['plans']))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => scheduleHydrate(cloudUserIdRef.current, ['knowledge']))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        if (shouldMuteTableSync('profiles')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['profiles']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+        if (shouldMuteTableSync('posts')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['posts']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
+        if (shouldMuteTableSync('plans')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['plans']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
+        if (shouldMuteTableSync('knowledge')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
+      })
       .subscribe();
 
     loadCloud();
@@ -918,6 +964,10 @@ export function AppProvider({ children }) {
     }
 
     try {
+      const markLocalMutation = (table) => {
+        localMutationMuteRef.current[table] = Date.now();
+      };
+
       if (action.type === 'LOGIN') {
         const account = normalizeAccount(action.payload?.account);
         const password = (action.payload?.password || '').trim();
@@ -1050,6 +1100,7 @@ export function AppProvider({ children }) {
       }
 
       if (action.type === 'UPDATE_PROFILE') {
+        markLocalMutation('profiles');
         const { error } = await supabase.from('profiles').update({
           name: action.payload?.name?.trim() || currentUser.name,
           bio: action.payload?.bio?.trim() || '',
@@ -1057,6 +1108,7 @@ export function AppProvider({ children }) {
         }).eq('id', currentUser.id);
         if (error) return { ok: false, error: '资料保存失败' };
       } else if (action.type === 'ADD_FRIEND' || action.type === 'REMOVE_FRIEND') {
+        markLocalMutation('profiles');
         const targetUserId = action.payload;
         const targetUser = currentState.users.find(user => user.id === targetUserId);
         if (!targetUser) return { ok: false, error: '未找到该用户' };
@@ -1076,6 +1128,7 @@ export function AppProvider({ children }) {
           return { ok: false, error: '好友关系更新失败' };
         }
       } else if (action.type === 'ADD_SUBJECT') {
+        markLocalMutation('profiles');
         const subject = action.payload?.trim();
         const nextSubjects = toUniqueStrings([...(currentUser.subjects || []), subject]);
         const { error } = await supabase.from('profiles').update({
@@ -1084,6 +1137,7 @@ export function AppProvider({ children }) {
         }).eq('id', currentUser.id);
         if (error) return { ok: false, error: '新增学科失败' };
       } else if (action.type === 'REMOVE_SUBJECT') {
+        markLocalMutation('profiles');
         const subject = action.payload?.trim();
         const currentSubjects = currentUser.subjects || [];
         if (currentSubjects.length <= 1) {
@@ -1096,17 +1150,20 @@ export function AppProvider({ children }) {
         }).eq('id', currentUser.id);
         if (error) return { ok: false, error: '删除学科失败' };
       } else if (action.type === 'ADD_POST') {
+        markLocalMutation('posts');
         const payload = await preparePostPayload(currentUser.id, action.payload);
         const { error } = await supabase.from('posts').insert(serializePost(payload));
         if (error) return { ok: false, error: '发布动态失败' };
         baseDispatch({ type: 'ADD_POST', payload });
         return { ok: true };
       } else if (action.type === 'DELETE_POST') {
+        markLocalMutation('posts');
         const { error } = await supabase.from('posts').delete().eq('id', action.payload).eq('user_id', currentUser.id);
         if (error) return { ok: false, error: '删除动态失败' };
         baseDispatch(action);
         return { ok: true };
       } else if (action.type === 'LIKE_POST') {
+        markLocalMutation('posts');
         const post = currentState.posts.find(item => item.id === action.payload?.postId);
         if (!post) return { ok: false, error: '动态不存在' };
         const liked = (post.likes || []).includes(action.payload?.userId);
@@ -1118,35 +1175,51 @@ export function AppProvider({ children }) {
         baseDispatch(action);
         return { ok: true };
       } else if (action.type === 'ADD_COMMENT' || action.type === 'DELETE_COMMENT') {
+        markLocalMutation('posts');
         const postId = action.payload?.postId;
         const post = currentState.posts.find(item => item.id === postId);
         if (!post) return { ok: false, error: '动态不存在' };
+        const optimisticComment = action.type === 'ADD_COMMENT' ? normalizeComment(action.payload?.comment) : null;
         const nextComments = action.type === 'ADD_COMMENT'
-          ? [...(post.comments || []), normalizeComment(action.payload?.comment)]
+          ? [...(post.comments || []), optimisticComment]
           : (post.comments || []).filter(comment => comment.id !== action.payload?.commentId);
+
+        if (action.type === 'ADD_COMMENT') {
+          baseDispatch({
+            type: 'ADD_COMMENT',
+            payload: {
+              postId,
+              comment: optimisticComment,
+            },
+          });
+        }
+
         const { error } = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
-        if (error) return { ok: false, error: '评论更新失败' };
-        baseDispatch(action.type === 'ADD_COMMENT'
-          ? {
-              type: 'ADD_COMMENT',
-              payload: {
-                postId,
-                comment: normalizeComment(action.payload?.comment),
-              },
-            }
-          : action);
+        if (error) {
+          if (action.type === 'ADD_COMMENT' && optimisticComment?.id) {
+            baseDispatch({ type: 'DELETE_COMMENT', payload: { postId, commentId: optimisticComment.id } });
+          }
+          return { ok: false, error: '评论更新失败' };
+        }
+
+        if (action.type === 'DELETE_COMMENT') {
+          baseDispatch(action);
+        }
         return { ok: true };
       } else if (action.type === 'ADD_PLAN') {
+        markLocalMutation('plans');
         const { error } = await supabase.from('plans').insert(serializePlan(action.payload));
         if (error) return { ok: false, error: '发布规划失败' };
         baseDispatch(action);
         return { ok: true };
       } else if (action.type === 'DELETE_PLAN') {
+        markLocalMutation('plans');
         const { error } = await supabase.from('plans').delete().eq('id', action.payload).eq('user_id', currentUser.id);
         if (error) return { ok: false, error: '删除规划失败' };
         baseDispatch(action);
         return { ok: true };
       } else if (action.type === 'TOGGLE_PLAN_TASK' || action.type === 'UPDATE_PLAN') {
+        markLocalMutation('plans');
         const planId = action.type === 'TOGGLE_PLAN_TASK' ? action.payload?.planId : action.payload?.id;
         const plan = currentState.plans.find(item => item.id === planId);
         if (!plan) return { ok: false, error: '规划不存在' };
@@ -1163,12 +1236,14 @@ export function AppProvider({ children }) {
         baseDispatch(action);
         return { ok: true };
       } else if (action.type === 'ADD_KNOWLEDGE') {
+        markLocalMutation('knowledge');
         const payload = await prepareKnowledgePayload(currentUser.id, action.payload);
         const { error } = await supabase.from('knowledge').insert(serializeKnowledge(payload));
         if (error) return { ok: false, error: '保存错题失败' };
         baseDispatch({ type: 'ADD_KNOWLEDGE', payload });
         return { ok: true };
       } else if (action.type === 'UPDATE_KNOWLEDGE') {
+        markLocalMutation('knowledge');
         const existing = currentState.knowledge.find(item => item.id === action.payload?.id);
         if (!existing) return { ok: false, error: '错题不存在' };
         const payload = await prepareKnowledgePayload(currentUser.id, { ...existing, ...action.payload });
@@ -1177,11 +1252,13 @@ export function AppProvider({ children }) {
         baseDispatch({ type: 'UPDATE_KNOWLEDGE', payload });
         return { ok: true };
       } else if (action.type === 'DELETE_KNOWLEDGE') {
+        markLocalMutation('knowledge');
         const { error } = await supabase.from('knowledge').delete().eq('id', action.payload).eq('user_id', currentUser.id);
         if (error) return { ok: false, error: '删除错题失败' };
         baseDispatch(action);
         return { ok: true };
       } else if (action.type === 'LIKE_KNOWLEDGE') {
+        markLocalMutation('knowledge');
         const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
         if (!item) return { ok: false, error: '错题不存在' };
         const liked = (item.likes || []).includes(action.payload?.userId);
@@ -1193,6 +1270,7 @@ export function AppProvider({ children }) {
         baseDispatch(action);
         return { ok: true };
       } else if (action.type === 'ADD_KNOWLEDGE_COMMENT') {
+        markLocalMutation('knowledge');
         const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
         if (!item) return { ok: false, error: '错题不存在' };
         const uploadedComment = normalizeComment({
@@ -1201,8 +1279,7 @@ export function AppProvider({ children }) {
           audioFiles: await uploadAudioFiles(currentUser.id, action.payload?.comment?.audioFiles, 'knowledge/comment-audio'),
         });
         const nextComments = [...(item.comments || []), uploadedComment];
-        const { error } = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
-        if (error) return { ok: false, error: '评论失败' };
+
         baseDispatch({
           type: 'ADD_KNOWLEDGE_COMMENT',
           payload: {
@@ -1210,6 +1287,12 @@ export function AppProvider({ children }) {
             comment: uploadedComment,
           },
         });
+
+        const { error } = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
+        if (error) {
+          baseDispatch({ type: 'DELETE_KNOWLEDGE_COMMENT', payload: { knowledgeId: item.id, commentId: uploadedComment.id } });
+          return { ok: false, error: '评论失败' };
+        }
         return { ok: true };
       } else {
         baseDispatch(action);

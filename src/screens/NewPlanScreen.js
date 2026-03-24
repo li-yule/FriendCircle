@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator,
+  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
@@ -19,6 +19,7 @@ export default function NewPlanScreen({ navigation }) {
   const [reminderTime, setReminderTime] = useState('21:00');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [permissionTip, setPermissionTip] = useState('通知权限状态未检测');
 
   function getTodayStr() {
     const d = new Date();
@@ -59,9 +60,14 @@ export default function NewPlanScreen({ navigation }) {
       permission = await Notifications.requestPermissionsAsync();
     }
     if (!permission.granted) {
-      Alert.alert('提醒未开启', '请在系统设置里允许通知权限，才能收到规划提醒。');
+      setPermissionTip('通知权限未开启，系统提醒不可用');
+      Alert.alert('提醒未开启', '请在系统设置里允许通知权限，才能收到规划提醒。', [
+        { text: '取消', style: 'cancel' },
+        { text: '去设置', onPress: () => Linking.openSettings().catch(() => {}) },
+      ]);
       return;
     }
+    setPermissionTip('通知权限已开启，可收到系统提醒');
 
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -109,28 +115,55 @@ export default function NewPlanScreen({ navigation }) {
     }
 
     setIsSubmitting(true);
-    const result = await dispatch({
-      type: 'ADD_PLAN',
-      payload: {
-        id: generateId(),
-        userId: currentUser.id,
-        title: trimmedTitle,
-        date: pickedDate.toISOString(),
-        tasks: [],
-        reminderAt: enableReminder ? `${date} ${reminderTime}` : '',
-        createdAt: new Date().toISOString(),
-      },
-    });
-    if (!result?.ok) {
+    let result;
+    try {
+      result = await dispatch({
+        type: 'ADD_PLAN',
+        payload: {
+          id: generateId(),
+          userId: currentUser.id,
+          title: trimmedTitle,
+          date: pickedDate.toISOString(),
+          tasks: [],
+          reminderAt: enableReminder ? `${date} ${reminderTime}` : '',
+          createdAt: new Date().toISOString(),
+        },
+      });
+    } finally {
       setIsSubmitting(false);
+    }
+    if (!result?.ok) {
       Alert.alert('发布失败', result?.error || '请稍后重试');
       return;
     }
     if (enableReminder) {
       scheduleReminder(trimmedTitle, date, reminderTime).catch(() => {});
     }
-    setIsSubmitting(false);
     navigation.goBack();
+  };
+
+  const handleToggleReminder = async () => {
+    if (enableReminder) {
+      setEnableReminder(false);
+      return;
+    }
+
+    let permission = await Notifications.getPermissionsAsync();
+    if (!permission.granted) {
+      permission = await Notifications.requestPermissionsAsync();
+    }
+
+    if (!permission.granted) {
+      setPermissionTip('通知权限未开启，系统提醒不可用');
+      Alert.alert('提醒未开启', '请在系统设置里允许通知权限，才能收到规划提醒。', [
+        { text: '取消', style: 'cancel' },
+        { text: '去设置', onPress: () => Linking.openSettings().catch(() => {}) },
+      ]);
+      return;
+    }
+
+    setPermissionTip('通知权限已开启，可收到系统提醒');
+    setEnableReminder(true);
   };
 
   return (
@@ -194,7 +227,7 @@ export default function NewPlanScreen({ navigation }) {
         <View style={styles.fieldCard}>
           <View style={styles.reminderHeader}>
             <Text style={styles.label}>时间提醒</Text>
-            <TouchableOpacity style={[styles.reminderToggle, enableReminder && styles.reminderToggleOn]} onPress={() => setEnableReminder(prev => !prev)}>
+            <TouchableOpacity style={[styles.reminderToggle, enableReminder && styles.reminderToggleOn]} onPress={handleToggleReminder}>
               <Text style={[styles.reminderToggleText, enableReminder && styles.reminderToggleTextOn]}>{enableReminder ? '已开启' : '未开启'}</Text>
             </TouchableOpacity>
           </View>
@@ -213,6 +246,7 @@ export default function NewPlanScreen({ navigation }) {
             </View>
           )}
           <Text style={styles.reminderHint}>支持本地提醒，示例：07:30、21:00。</Text>
+          <Text style={styles.reminderPermissionHint}>{permissionTip}</Text>
         </View>
 
         <View style={styles.todayTip}>
@@ -339,6 +373,7 @@ const styles = StyleSheet.create({
   },
   reminderInput: { flex: 1, fontSize: 14, color: '#D95555', fontWeight: '600' },
   reminderHint: { fontSize: 12, color: '#B88686' },
+  reminderPermissionHint: { fontSize: 12, color: '#A36B6B' },
   todayTip: {
     flexDirection: 'row',
     gap: 8,

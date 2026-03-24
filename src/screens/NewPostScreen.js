@@ -11,6 +11,8 @@ import { Avatar } from '../components/Avatar';
 import { generateId } from '../utils/helpers';
 
 const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
+const MAX_VIDEO_SIZE_BYTES = 30 * 1024 * 1024;
+const MAX_VIDEO_DURATION_MS = 90 * 1000;
 
 export default function NewPostScreen({ navigation }) {
   const { state, dispatch } = useApp();
@@ -65,7 +67,17 @@ export default function NewPostScreen({ navigation }) {
       quality: 0.6,
     });
     if (!result.canceled) {
-      const picked = (result.assets || []).map(asset => asset.uri).filter(Boolean);
+      const picked = (result.assets || []).filter(asset => {
+        if (asset?.fileSize && asset.fileSize > MAX_VIDEO_SIZE_BYTES) {
+          Alert.alert('视频过大', '请将视频控制在 30MB 以内');
+          return false;
+        }
+        if (asset?.duration && asset.duration > MAX_VIDEO_DURATION_MS) {
+          Alert.alert('视频过长', '请将视频时长控制在 90 秒以内');
+          return false;
+        }
+        return Boolean(asset?.uri);
+      }).map(asset => asset.uri);
       setVideos(prev => [...prev, ...picked].slice(0, 3));
     }
   };
@@ -82,7 +94,16 @@ export default function NewPostScreen({ navigation }) {
       videoMaxDuration: 60,
     });
     if (!result.canceled) {
-      const uri = result.assets?.[0]?.uri;
+      const asset = result.assets?.[0];
+      if (asset?.fileSize && asset.fileSize > MAX_VIDEO_SIZE_BYTES) {
+        Alert.alert('视频过大', '请将视频控制在 30MB 以内');
+        return;
+      }
+      if (asset?.duration && asset.duration > MAX_VIDEO_DURATION_MS) {
+        Alert.alert('视频过长', '请将视频时长控制在 90 秒以内');
+        return;
+      }
+      const uri = asset?.uri;
       if (!uri) return;
       setVideos(prev => [...prev, uri].slice(0, 3));
     }
@@ -103,21 +124,25 @@ export default function NewPostScreen({ navigation }) {
       return;
     }
     setIsSubmitting(true);
-    const result = await dispatch({
-      type: 'ADD_POST',
-      payload: {
-        id: generateId(),
-        userId: currentUser.id,
-        text: text.trim(),
-        images,
-        videos,
-        likes: [],
-        comments: [],
-        createdAt: new Date().toISOString(),
-      },
-    });
-    if (!result?.ok) {
+    let result;
+    try {
+      result = await dispatch({
+        type: 'ADD_POST',
+        payload: {
+          id: generateId(),
+          userId: currentUser.id,
+          text: text.trim(),
+          images,
+          videos,
+          likes: [],
+          comments: [],
+          createdAt: new Date().toISOString(),
+        },
+      });
+    } finally {
       setIsSubmitting(false);
+    }
+    if (!result?.ok) {
       Alert.alert('发布失败', result?.error || '请稍后重试');
       return;
     }

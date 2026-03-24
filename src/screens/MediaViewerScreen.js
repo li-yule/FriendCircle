@@ -1,12 +1,13 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler, View, Text, StyleSheet, TouchableOpacity, Image,
-  FlatList, Dimensions, Alert, ScrollView,
+  FlatList, Dimensions, Alert, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { PinchGestureHandler, State as GestureState } from 'react-native-gesture-handler';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -30,29 +31,36 @@ function getDownloadName(item) {
 }
 
 function ImageSlide({ uri }) {
+  const baseScale = useRef(new Animated.Value(1)).current;
+  const pinchScale = useRef(new Animated.Value(1)).current;
+  const lastScale = useRef(1);
+  const scale = useRef(Animated.multiply(baseScale, pinchScale)).current;
+
+  const onPinchGestureEvent = Animated.event(
+    [{ nativeEvent: { scale: pinchScale } }],
+    { useNativeDriver: true }
+  );
+
+  const onPinchStateChange = (event) => {
+    if (event.nativeEvent.oldState === GestureState.ACTIVE) {
+      const nextScale = Math.max(1, Math.min(lastScale.current * event.nativeEvent.scale, 4));
+      lastScale.current = nextScale;
+      baseScale.setValue(nextScale);
+      pinchScale.setValue(1);
+    }
+  };
+
   return (
     <View style={styles.slide}>
-      <ScrollView
-        style={styles.zoomWrap}
-        contentContainerStyle={styles.zoomContent}
-        maximumZoomScale={5}
-        minimumZoomScale={1}
-        pinchGestureEnabled
-        bouncesZoom
-        scrollEnabled={true}
-        scrollEventThrottle={16}
-        bounces={true}
-        centerContent
-        nestedScrollEnabled
-        directionalLockEnabled={false}
-      >
-        <Image 
-          source={{ uri }} 
-          style={styles.image} 
-          resizeMode="contain"
-          onError={(e) => console.log('Image load error:', e.nativeEvent.error)}
-        />
-      </ScrollView>
+      <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
+        <Animated.View style={styles.zoomContent}>
+          <Animated.Image
+            source={{ uri }}
+            style={[styles.image, { transform: [{ scale }] }]}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      </PinchGestureHandler>
     </View>
   );
 }
@@ -252,13 +260,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
   },
-  zoomWrap: { 
-    width: '100%', 
-    height: '100%',
-    backgroundColor: '#050505',
-  },
   zoomContent: { 
-    flexGrow: 1,
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
