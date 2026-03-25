@@ -69,17 +69,17 @@ export default function DatePickerSheet({
           <View style={styles.headerRow}>
             <Text style={styles.title}>{title}</Text>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={20} color="#888" />
+              <Ionicons name="close" size={20} color="#7D746B" />
             </TouchableOpacity>
           </View>
 
           <View style={styles.monthRow}>
             <TouchableOpacity onPress={() => setCursor(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>
-              <Ionicons name="chevron-back" size={20} color="#666" />
+              <Ionicons name="chevron-back" size={20} color="#6F655D" />
             </TouchableOpacity>
             <Text style={styles.monthText}>{cursor.getFullYear()} 年 {cursor.getMonth() + 1} 月</Text>
             <TouchableOpacity onPress={() => setCursor(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>
-              <Ionicons name="chevron-forward" size={20} color="#666" />
+              <Ionicons name="chevron-forward" size={20} color="#6F655D" />
             </TouchableOpacity>
           </View>
 
@@ -137,9 +137,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     borderRadius: 24,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#E8E1D8',
   },
   headerRow: {
     flexDirection: 'row',
@@ -147,14 +149,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  title: { fontSize: 18, fontWeight: '700', color: '#222' },
+  title: { fontSize: 18, fontWeight: '700', color: '#2F2A24' },
   monthRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  monthText: { fontSize: 16, fontWeight: '600', color: '#333' },
+  monthText: { fontSize: 16, fontWeight: '600', color: '#2F2A24' },
   weekRow: { flexDirection: 'row', marginBottom: 8 },
   weekCell: {
     width: '14.2857%',
@@ -164,7 +166,7 @@ const styles = StyleSheet.create({
   },
   weekText: {
     textAlign: 'center',
-    color: '#7A7A7A',
+    color: '#867D73',
     fontSize: 13,
   },
   daysWrap: { flexDirection: 'row', flexWrap: 'wrap' },
@@ -183,12 +185,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayCellSelected: {
-    backgroundColor: '#FCEFE8',
+    backgroundColor: '#EAF7F5',
     borderWidth: 1.5,
-    borderColor: '#E47B39',
+    borderColor: '#2F9F97',
   },
   dayCellDisabled: { opacity: 0.35 },
-  dayText: { color: '#555', fontSize: 15 },
-  dayTextSelected: { color: '#E47B39', fontWeight: '700' },
+  dayText: { color: '#6F655D', fontSize: 15 },
+  dayTextSelected: { color: '#2F9F97', fontWeight: '700' },
   dayTextDisabled: { color: '#AAA' },
 });

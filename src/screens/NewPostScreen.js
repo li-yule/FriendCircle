@@ -188,7 +188,7 @@ export default function NewPostScreen({ navigation }) {
 
         <View style={styles.composerToolbar}>
           <TouchableOpacity style={styles.emojiToggleBtn} onPress={() => setShowEmojiPicker(prev => !prev)}>
-            <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={20} color="#4ECDC4" />
+            <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={20} color="#2F9F97" />
             <Text style={styles.emojiToggleText}>表情</Text>
           </TouchableOpacity>
           <Text style={styles.textCount}>{text.length}/1000</Text>
@@ -239,26 +239,26 @@ export default function NewPostScreen({ navigation }) {
         {/* 媒体按钮 */}
         <View style={styles.mediaButtons}>
           <TouchableOpacity style={styles.mediaBtn} onPress={pickImage} disabled={isSubmitting}>
-            <Ionicons name="image-outline" size={24} color="#4ECDC4" />
+            <Ionicons name="image-outline" size={24} color="#2F9F97" />
             <Text style={styles.mediaBtnText}>相册</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.mediaBtn} onPress={takePhoto} disabled={isSubmitting}>
-            <Ionicons name="camera-outline" size={24} color="#4ECDC4" />
+            <Ionicons name="camera-outline" size={24} color="#2F9F97" />
             <Text style={styles.mediaBtnText}>拍照</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.mediaBtn} onPress={pickVideo} disabled={isSubmitting}>
-            <Ionicons name="videocam-outline" size={24} color="#4ECDC4" />
+            <Ionicons name="videocam-outline" size={24} color="#2F9F97" />
             <Text style={styles.mediaBtnText}>视频</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.mediaBtn} onPress={recordVideo} disabled={isSubmitting}>
-            <Ionicons name="film-outline" size={24} color="#4ECDC4" />
+            <Ionicons name="film-outline" size={24} color="#2F9F97" />
             <Text style={styles.mediaBtnText}>录像</Text>
           </TouchableOpacity>
         </View>
 
         {isSubmitting ? (
           <View style={styles.uploadingNotice}>
-            <ActivityIndicator size="small" color="#4ECDC4" />
+            <ActivityIndicator size="small" color="#2F9F97" />
             <Text style={styles.uploadingText}>
               {images.length > 0 || videos.length > 0 ? '正在上传图片/视频并发布，请稍候...' : '正在发布动态，请稍候...'}
             </Text>
@@ -270,7 +270,7 @@ export default function NewPostScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#F7F4EE' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -279,19 +279,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#E8E1D8',
+    backgroundColor: '#FFFDF8',
   },
-  cancel: { fontSize: 16, color: '#666' },
-  title: { fontSize: 17, fontWeight: '600', color: '#333' },
-  sendBtn: { backgroundColor: '#4ECDC4', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20 },
+  cancel: { fontSize: 16, color: '#6F655D' },
+  title: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
+  sendBtn: { backgroundColor: '#2F9F97', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20 },
   sendBtnDisabled: { opacity: 0.75 },
   sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   body: { padding: 16 },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
-  userName: { fontSize: 16, fontWeight: '600', color: '#333' },
+  userName: { fontSize: 16, fontWeight: '600', color: '#2F2A24' },
   textInput: {
     fontSize: 16,
-    color: '#333',
+    color: '#2F2A24',
     minHeight: 150,
     lineHeight: 24,
     marginBottom: 8,
@@ -303,7 +304,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emojiToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  emojiToggleText: { color: '#4ECDC4', fontSize: 13, fontWeight: '600' },
+  emojiToggleText: { color: '#2F9F97', fontSize: 13, fontWeight: '600' },
   textCount: { fontSize: 12, color: '#B3B3B3' },
   emojiPanel: {
     flexDirection: 'row',
@@ -312,8 +313,8 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E9F5F4',
-    backgroundColor: '#F7FCFB',
+    borderColor: '#DCEFEA',
+    backgroundColor: '#EAF7F5',
     marginBottom: 14,
   },
   emojiItem: {
@@ -339,8 +340,8 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   mediaButtons: { flexDirection: 'row', gap: 20, marginTop: 8 },
-  mediaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  mediaBtnText: { color: '#4ECDC4', fontSize: 14 },
+  mediaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EAF7F5', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8 },
+  mediaBtnText: { color: '#2F9F97', fontSize: 14 },
   uploadingNotice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -348,7 +349,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: '#F2FBFA',
+    backgroundColor: '#EAF7F5',
   },
-  uploadingText: { color: '#4ECDC4', fontSize: 13, flex: 1, lineHeight: 18 },
+  uploadingText: { color: '#2F9F97', fontSize: 13, flex: 1, lineHeight: 18 },
 });

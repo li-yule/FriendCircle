@@ -218,7 +218,7 @@ export default function PostDetailScreen({ navigation, route }) {
         ) : null}
         <View style={styles.inputRow}>
           <TouchableOpacity style={styles.emojiBtn} onPress={() => setShowEmojiPicker(prev => !prev)}>
-            <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={18} color="#4ECDC4" />
+            <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={18} color="#2F9F97" />
           </TouchableOpacity>
           <TextInput
             style={styles.input}
@@ -230,7 +230,7 @@ export default function PostDetailScreen({ navigation, route }) {
             maxLength={300}
           />
           <TouchableOpacity style={styles.sendBtn} onPress={handleComment}>
-            <Ionicons name="send" size={18} color="#4ECDC4" />
+            <Ionicons name="send" size={18} color="#2F9F97" />
           </TouchableOpacity>
         </View>
         {showEmojiPicker ? (
@@ -258,14 +258,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#E8E1D8',
   },
   headerTitle: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
   body: { padding: 14, gap: 12, paddingBottom: 16 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   authorInfo: { flex: 1 },
   authorName: { fontSize: 15, fontWeight: '700', color: '#2F2A24' },
-  timeText: { marginTop: 2, fontSize: 12, color: '#999' },
+  timeText: { marginTop: 2, fontSize: 12, color: '#8A8279' },
   contentText: { fontSize: 16, color: '#2F2A24', lineHeight: 24, backgroundColor: '#FFFDF8', borderRadius: 14, padding: 14 },
   mediaRow: { marginTop: 4 },
   image: { width: 180, height: 180, borderRadius: 12, marginRight: 10 },
@@ -287,14 +287,14 @@ const styles = StyleSheet.create({
   expandBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   actionRow: { flexDirection: 'row', gap: 18, alignItems: 'center', paddingHorizontal: 4 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  actionText: { color: '#666', fontSize: 13 },
+  actionText: { color: '#6F655D', fontSize: 13 },
   commentTitle: { fontSize: 15, fontWeight: '700', color: '#2F2A24', marginTop: 8 },
   commentItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   commentBubble: { flex: 1, backgroundColor: '#FFFDF8', borderRadius: 12, padding: 10 },
   commentName: { fontSize: 13, fontWeight: '700', color: '#2F9F97' },
-  replyHint: { fontSize: 11, color: '#999', marginTop: 2 },
-  commentText: { fontSize: 14, color: '#444', marginTop: 2, lineHeight: 20 },
-  commentTime: { fontSize: 11, color: '#bbb', marginTop: 5 },
+  replyHint: { fontSize: 11, color: '#8A8279', marginTop: 2 },
+  commentText: { fontSize: 14, color: '#3D3731', marginTop: 2, lineHeight: 20 },
+  commentTime: { fontSize: 11, color: '#A79C90', marginTop: 5 },
   inputBar: {
     backgroundColor: '#FFFDF8',
     borderTopWidth: 1,
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  replyTargetText: { color: '#999', fontSize: 12 },
+  replyTargetText: { color: '#8A8279', fontSize: 12 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',

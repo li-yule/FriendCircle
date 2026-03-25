@@ -245,7 +245,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
       {/* 顶部导航 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color="#2F2A24" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>错题详情</Text>
@@ -267,7 +267,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
               <Ionicons name="swap-horizontal-outline" size={18} color="#666" />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => navigation.navigate('NewKnowledge', { item: liveItem })}>
-              <Ionicons name="create-outline" size={22} color="#4ECDC4" />
+              <Ionicons name="create-outline" size={22} color="#2F9F97" />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleDelete} style={{ marginLeft: 12 }}>
               <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
@@ -284,7 +284,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             disabled={!prevKnowledge}
             onPress={() => navigation.replace('KnowledgeDetail', { item: prevKnowledge })}
           >
-            <Ionicons name="chevron-back" size={16} color={prevKnowledge ? '#4ECDC4' : '#BBB'} />
+            <Ionicons name="chevron-back" size={16} color={prevKnowledge ? '#2F9F97' : '#BBB'} />
             <Text style={[styles.switchBtnText, !prevKnowledge && styles.switchBtnTextDisabled]}>上一题</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -293,7 +293,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             onPress={() => navigation.replace('KnowledgeDetail', { item: nextKnowledge })}
           >
             <Text style={[styles.switchBtnText, !nextKnowledge && styles.switchBtnTextDisabled]}>下一题</Text>
-            <Ionicons name="chevron-forward" size={16} color={nextKnowledge ? '#4ECDC4' : '#BBB'} />
+            <Ionicons name="chevron-forward" size={16} color={nextKnowledge ? '#2F9F97' : '#BBB'} />
           </TouchableOpacity>
         </View>
 
@@ -425,7 +425,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                   style={styles.audioItem}
                   onPress={() => file.uri && Linking.openURL(file.uri)}
                 >
-                  <Ionicons name="mic-outline" size={16} color="#4ECDC4" />
+                  <Ionicons name="mic-outline" size={16} color="#2F9F97" />
                   <Text style={styles.audioName} numberOfLines={1}>{file.name || '语音文件'}</Text>
                   <Ionicons name="open-outline" size={16} color="#999" />
                 </TouchableOpacity>
@@ -481,7 +481,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                         style={styles.audioItem}
                         onPress={() => file.uri && Linking.openURL(file.uri)}
                       >
-                        <Ionicons name="mic-outline" size={16} color="#4ECDC4" />
+                        <Ionicons name="mic-outline" size={16} color="#2F9F97" />
                         <Text style={styles.audioName} numberOfLines={1}>{file.name || '语音文件'}</Text>
                         <Ionicons name="open-outline" size={16} color="#999" />
                       </TouchableOpacity>
@@ -518,16 +518,16 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
           />
           <View style={styles.commentToolbar}>
             <TouchableOpacity onPress={() => setShowEmojiPicker(prev => !prev)}>
-              <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={20} color="#4ECDC4" />
+              <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={20} color="#2F9F97" />
             </TouchableOpacity>
             <TouchableOpacity onPress={pickCommentImages}>
-              <Ionicons name="image-outline" size={20} color="#4ECDC4" />
+              <Ionicons name="image-outline" size={20} color="#2F9F97" />
             </TouchableOpacity>
             <TouchableOpacity onPress={isRecording ? stopRecording : startRecording}>
-              <Ionicons name="mic-outline" size={20} color={isRecording ? '#FF6B6B' : '#4ECDC4'} />
+              <Ionicons name="mic-outline" size={20} color={isRecording ? '#FF6B6B' : '#2F9F97'} />
             </TouchableOpacity>
             <TouchableOpacity onPress={importCommentAudio}>
-              <Ionicons name="folder-open-outline" size={20} color="#4ECDC4" />
+              <Ionicons name="folder-open-outline" size={20} color="#2F9F97" />
             </TouchableOpacity>
           </View>
           {showEmojiPicker && (
@@ -557,7 +557,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             <View style={styles.audioList}>
               {commentAudioFiles.map((file, index) => (
                 <View key={`${file.uri}_${index}`} style={styles.audioItem}>
-                  <Ionicons name="mic-outline" size={16} color="#4ECDC4" />
+                  <Ionicons name="mic-outline" size={16} color="#2F9F97" />
                   <Text style={styles.audioName} numberOfLines={1}>{file.name || '语音文件'}</Text>
                   <TouchableOpacity onPress={() => setCommentAudioFiles(prev => prev.filter((_, i) => i !== index))}>
                     <Ionicons name="close-circle" size={18} color="#FF6B6B" />
@@ -568,7 +568,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
           )}
         </View>
         <TouchableOpacity onPress={handleComment}>
-          <Ionicons name="send" size={20} color="#4ECDC4" />
+          <Ionicons name="send" size={20} color="#2F9F97" />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -576,26 +576,26 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  container: { flex: 1, backgroundColor: '#F7F4EE' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#E8E1D8',
   },
   headerCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  headerTitle: { fontSize: 17, fontWeight: '600', color: '#333' },
+  headerTitle: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   headerTypeBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  headerTypeBadgeKnowledge: { backgroundColor: '#4ECDC422' },
+  headerTypeBadgeKnowledge: { backgroundColor: '#EAF7F5' },
   headerTypeBadgeError: { backgroundColor: '#FF6B6B22' },
   headerTypeBadgeText: { fontSize: 11, fontWeight: '600' },
-  headerTypeTextKnowledge: { color: '#4ECDC4' },
+  headerTypeTextKnowledge: { color: '#2F9F97' },
   headerTypeTextError: { color: '#FF6B6B' },
   typeSwitchBtn: { marginRight: 10, padding: 2 },
   body: { padding: 16, gap: 16, paddingBottom: 80 },
@@ -609,38 +609,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     borderWidth: 1,
-    borderColor: '#DDEFF0',
+    borderColor: '#DCEFEA',
     borderRadius: 14,
-    backgroundColor: '#F5FBFB',
+    backgroundColor: '#EAF7F5',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   switchBtnDisabled: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F2EEE6',
     borderColor: '#E6E6E6',
   },
-  switchBtnText: { color: '#4ECDC4', fontSize: 13, fontWeight: '600' },
+  switchBtnText: { color: '#2F9F97', fontSize: 13, fontWeight: '600' },
   switchBtnTextDisabled: { color: '#BBB' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  subjectBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: '#EAF7F6' },
-  subjectText: { fontWeight: '600', fontSize: 13, color: '#4ECDC4' },
+  subjectBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: '#EAF7F5' },
+  subjectText: { fontWeight: '600', fontSize: 13, color: '#2F9F97' },
   authorInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'flex-end' },
-  authorName: { fontSize: 13, color: '#666' },
-  timeText: { fontSize: 12, color: '#bbb' },
+  authorName: { fontSize: 13, color: '#6F655D' },
+  timeText: { fontSize: 12, color: '#A79C90' },
   section: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     borderRadius: 16,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#E8E1D8',
   },
-  wrongSection: { backgroundColor: '#FFF5F5' },
-  correctSection: { backgroundColor: '#F5FFF8' },
-  summarySection: { backgroundColor: '#FFFDF0' },
-  sectionLabel: { fontSize: 13, fontWeight: '600', color: '#999', marginBottom: 8 },
-  questionText: { fontSize: 15, color: '#333', lineHeight: 24 },
-  questionPlaceholder: { fontSize: 14, color: '#999', lineHeight: 22, fontStyle: 'italic' },
+  wrongSection: { backgroundColor: '#FFF4F4' },
+  correctSection: { backgroundColor: '#F0FBF8' },
+  summarySection: { backgroundColor: '#F2EEE6' },
+  sectionLabel: { fontSize: 13, fontWeight: '600', color: '#8A8279', marginBottom: 8 },
+  questionText: { fontSize: 15, color: '#2F2A24', lineHeight: 24 },
+  questionPlaceholder: { fontSize: 14, color: '#8A8279', lineHeight: 22, fontStyle: 'italic' },
   wrongText: { fontSize: 15, color: '#FF6B6B', lineHeight: 22 },
   correctText: { fontSize: 15, color: '#4CAF50', lineHeight: 22 },
-  summaryText: { fontSize: 15, color: '#555', lineHeight: 24 },
+  summaryText: { fontSize: 15, color: '#6F655D', lineHeight: 24 },
   imageRow: { flexDirection: 'row', gap: 10 },
   imageItem: { width: 120, height: 120, borderRadius: 10 },
   audioList: { gap: 8 },
@@ -648,21 +650,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#F9F5EE',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 10,
   },
-  audioName: { flex: 1, color: '#666', fontSize: 13 },
+  audioName: { flex: 1, color: '#6F655D', fontSize: 13 },
   tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: '100%' },
-  tagChip: { backgroundColor: '#F4F4F4', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' },
-  tagText: { color: '#666', fontSize: 12 },
+  tagChip: { backgroundColor: '#EFE8DE', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' },
+  tagText: { color: '#6F655D', fontSize: 12 },
   likeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', paddingVertical: 8 },
   likeText: { fontSize: 15, color: '#ccc' },
-  commentTitle: { fontSize: 15, fontWeight: '600', color: '#333' },
+  commentTitle: { fontSize: 15, fontWeight: '600', color: '#2F2A24' },
   commentItem: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  commentBubble: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 12 },
-  commentName: { fontSize: 13, fontWeight: '600', color: '#4ECDC4', marginBottom: 4 },
+  commentBubble: { flex: 1, backgroundColor: '#FFFDF8', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E8E1D8' },
+  commentName: { fontSize: 13, fontWeight: '600', color: '#2F9F97', marginBottom: 4 },
   replyHint: { fontSize: 11, color: '#999', marginBottom: 3 },
   commentTextContent: { fontSize: 14, color: '#444', lineHeight: 20 },
   commentTime: { fontSize: 11, color: '#bbb', marginTop: 4 },
@@ -670,15 +672,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 10,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    borderTopColor: '#E8E1D8',
     paddingBottom: 24,
   },
   commentInput: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F9F5EE',
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -716,7 +718,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F7FCFB',
+    backgroundColor: '#EAF7F5',
   },
   emojiText: { fontSize: 18 },
   commentMediaScroll: {
@@ -741,7 +743,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#333',
+    backgroundColor: '#6F655D',
     alignItems: 'center',
     justifyContent: 'center',
   },

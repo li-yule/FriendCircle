@@ -188,7 +188,7 @@ export default function KnowledgeMediaViewerScreen({ navigation, route }) {
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#333" />
+            <Ionicons name="arrow-back" size={24} color="#2F2A24" />
           </TouchableOpacity>
           <Text style={styles.title}>该知识项目无媒体</Text>
         </View>
@@ -202,7 +202,7 @@ export default function KnowledgeMediaViewerScreen({ navigation, route }) {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color="#2F2A24" />
         </TouchableOpacity>
         <View style={styles.progress}>
           <Text style={styles.progressText}>
@@ -213,7 +213,7 @@ export default function KnowledgeMediaViewerScreen({ navigation, route }) {
           onPress={() => handleSaveAsset(currentMedia[safeMediaIndex])}
           style={styles.headerBtn}
         >
-          <Ionicons name="download-outline" size={24} color="#333" />
+          <Ionicons name="download-outline" size={24} color="#2F2A24" />
         </TouchableOpacity>
       </View>
 
@@ -224,7 +224,7 @@ export default function KnowledgeMediaViewerScreen({ navigation, route }) {
           onPress={handlePrevKnowledge}
           disabled={knowledgeIndex === 0}
         >
-          <Ionicons name="chevron-up-outline" size={20} color={knowledgeIndex === 0 ? '#ccc' : '#333'} />
+          <Ionicons name="chevron-up-outline" size={20} color={knowledgeIndex === 0 ? '#ccc' : '#2F2A24'} />
         </TouchableOpacity>
 
         <View style={styles.knowledgeInfo}>
@@ -242,7 +242,7 @@ export default function KnowledgeMediaViewerScreen({ navigation, route }) {
           onPress={handleNextKnowledge}
           disabled={knowledgeIndex === allMediaByItem.length - 1}
         >
-          <Ionicons name="chevron-down-outline" size={20} color={knowledgeIndex === allMediaByItem.length - 1 ? '#ccc' : '#333'} />
+          <Ionicons name="chevron-down-outline" size={20} color={knowledgeIndex === allMediaByItem.length - 1 ? '#ccc' : '#2F2A24'} />
         </TouchableOpacity>
       </View>
 
@@ -285,7 +285,7 @@ export default function KnowledgeMediaViewerScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F7F4EE',
   },
   header: {
     flexDirection: 'row',
@@ -294,7 +294,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#E8E1D8',
+    backgroundColor: '#FFFDF8',
   },
   headerBtn: {
     padding: 8,
@@ -302,12 +303,13 @@ const styles = StyleSheet.create({
   progress: {
     paddingHorizontal: 16,
     paddingVertical: 4,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#EAF7F5',
     borderRadius: 12,
   },
   progressText: {
     fontSize: 12,
-    color: '#666',
+    color: '#2F9F97',
+    fontWeight: '600',
   },
   knowledgeNavBar: {
     flexDirection: 'row',
@@ -315,8 +317,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#fafafa',
+    borderBottomColor: '#E8E1D8',
+    backgroundColor: '#FFFDF8',
   },
   navBtn: {
     padding: 8,
@@ -331,18 +333,18 @@ const styles = StyleSheet.create({
   },
   knowledgeSubject: {
     fontSize: 12,
-    color: '#999',
+    color: '#8A8279',
     marginBottom: 2,
   },
   knowledgeQuestion: {
     fontSize: 13,
-    color: '#333',
+    color: '#2F2A24',
     fontWeight: '500',
     marginBottom: 2,
   },
   knowledgeAuthor: {
     fontSize: 11,
-    color: '#999',
+    color: '#8A8279',
   },
   mediaList: {
     flex: 1,
@@ -368,17 +370,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: '#f5f5f5',
+    borderTopColor: '#E8E1D8',
+    backgroundColor: '#FFFDF8',
   },
   mediaCount: {
     fontSize: 12,
-    color: '#999',
+    color: '#8A8279',
     marginBottom: 4,
   },
   mediaLabel: {
     fontSize: 13,
-    color: '#333',
+    color: '#2F2A24',
     fontWeight: '500',
   },
 });

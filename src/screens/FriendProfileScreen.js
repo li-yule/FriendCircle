@@ -27,7 +27,7 @@ export default function FriendProfileScreen({ navigation, route }) {
       {/* 返回按钮 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color="#2F2A24" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{user.name} 的主页</Text>
         <View style={{ width: 24 }} />
@@ -56,14 +56,14 @@ export default function FriendProfileScreen({ navigation, route }) {
           style={[styles.tab, tab === 'posts' && styles.tabActive]}
           onPress={() => setTab('posts')}
         >
-          <Ionicons name="images-outline" size={18} color={tab === 'posts' ? '#4ECDC4' : '#999'} />
+          <Ionicons name="images-outline" size={18} color={tab === 'posts' ? '#2F9F97' : '#8A8279'} />
           <Text style={[styles.tabText, tab === 'posts' && styles.tabTextActive]}>动态</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, tab === 'plans' && styles.tabActive]}
           onPress={() => setTab('plans')}
         >
-          <Ionicons name="calendar-outline" size={18} color={tab === 'plans' ? '#4ECDC4' : '#999'} />
+          <Ionicons name="calendar-outline" size={18} color={tab === 'plans' ? '#2F9F97' : '#8A8279'} />
           <Text style={[styles.tabText, tab === 'plans' && styles.tabTextActive]}>规划</Text>
         </TouchableOpacity>
       </View>
@@ -124,7 +124,7 @@ export default function FriendProfileScreen({ navigation, route }) {
                       <Ionicons
                         name={task.done ? 'checkmark-circle' : 'ellipse-outline'}
                         size={18}
-                        color={task.done ? '#4ECDC4' : '#ddd'}
+                        color={task.done ? '#2F9F97' : '#CFC5B8'}
                       />
                       <Text style={[styles.taskText, task.done && styles.taskDone]}>{task.text}</Text>
                     </View>
@@ -140,49 +140,49 @@ export default function FriendProfileScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  container: { flex: 1, backgroundColor: '#F7F4EE' },
   contentContainer: { paddingBottom: 40 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#E8E1D8',
     marginBottom: 12,
   },
-  headerTitle: { fontSize: 17, fontWeight: '600', color: '#333' },
-  profileCard: { alignItems: 'center', backgroundColor: '#fff', paddingVertical: 24, marginBottom: 12 },
-  name: { fontSize: 22, fontWeight: 'bold', color: '#333', marginTop: 12 },
-  bio: { fontSize: 14, color: '#888', marginTop: 6, textAlign: 'center', paddingHorizontal: 20 },
+  headerTitle: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
+  profileCard: { alignItems: 'center', backgroundColor: '#FFFDF8', paddingVertical: 24, marginBottom: 12 },
+  name: { fontSize: 22, fontWeight: 'bold', color: '#2F2A24', marginTop: 12 },
+  bio: { fontSize: 14, color: '#7D746B', marginTop: 6, textAlign: 'center', paddingHorizontal: 20 },
   statsRow: { flexDirection: 'row', gap: 40, marginTop: 20 },
   stat: { alignItems: 'center' },
-  statNum: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  statLabel: { fontSize: 13, color: '#999' },
-  tabs: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F0F0F0', marginBottom: 12 },
+  statNum: { fontSize: 20, fontWeight: 'bold', color: '#2F2A24' },
+  statLabel: { fontSize: 13, color: '#8A8279' },
+  tabs: { flexDirection: 'row', backgroundColor: '#FFFDF8', borderBottomWidth: 1, borderBottomColor: '#E8E1D8', marginBottom: 12 },
   tab: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, paddingVertical: 12 },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#4ECDC4' },
-  tabText: { fontSize: 14, color: '#999' },
-  tabTextActive: { color: '#4ECDC4', fontWeight: '600' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: '#2F9F97' },
+  tabText: { fontSize: 14, color: '#8A8279' },
+  tabTextActive: { color: '#2F9F97', fontWeight: '600' },
   postsGrid: { paddingHorizontal: 12, gap: 12 },
-  postCard: { backgroundColor: '#fff', borderRadius: 14, padding: 14 },
+  postCard: { backgroundColor: '#FFFDF8', borderRadius: 14, padding: 14 },
   postImage: { width: 120, height: 120, borderRadius: 8, marginRight: 8 },
-  postText: { fontSize: 14, color: '#333', lineHeight: 20 },
-  postTime: { fontSize: 11, color: '#bbb', marginTop: 6 },
+  postText: { fontSize: 14, color: '#2F2A24', lineHeight: 20 },
+  postTime: { fontSize: 11, color: '#A79C90', marginTop: 6 },
   planList: { paddingHorizontal: 12, gap: 10 },
-  planCard: { backgroundColor: '#fff', borderRadius: 14, padding: 14 },
+  planCard: { backgroundColor: '#FFFDF8', borderRadius: 14, padding: 14 },
   planHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  planTitle: { fontSize: 15, fontWeight: '600', color: '#333' },
-  planDate: { fontSize: 12, color: '#999' },
+  planTitle: { fontSize: 15, fontWeight: '600', color: '#2F2A24' },
+  planDate: { fontSize: 12, color: '#8A8279' },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  progressBar: { flex: 1, height: 5, backgroundColor: '#F0F0F0', borderRadius: 3 },
-  progressFill: { height: 5, backgroundColor: '#FF6B6B', borderRadius: 3 },
-  progressLabel: { fontSize: 12, color: '#FF6B6B' },
+  progressBar: { flex: 1, height: 5, backgroundColor: '#ECE4DA', borderRadius: 3 },
+  progressFill: { height: 5, backgroundColor: '#2F9F97', borderRadius: 3 },
+  progressLabel: { fontSize: 12, color: '#2F9F97' },
   taskRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  taskText: { fontSize: 14, color: '#333' },
-  taskDone: { textDecorationLine: 'line-through', color: '#bbb' },
-  emptyText: { textAlign: 'center', color: '#bbb', fontSize: 14, marginTop: 30, width: '100%', paddingHorizontal: 20 },
+  taskText: { fontSize: 14, color: '#2F2A24' },
+  taskDone: { textDecorationLine: 'line-through', color: '#A79C90' },
+  emptyText: { textAlign: 'center', color: '#A79C90', fontSize: 14, marginTop: 30, width: '100%', paddingHorizontal: 20 },
 });

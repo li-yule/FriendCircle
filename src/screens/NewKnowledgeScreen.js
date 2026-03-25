@@ -347,22 +347,22 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           <Text style={styles.label}>附件（可选）</Text>
           <View style={styles.mediaActions}>
             <TouchableOpacity style={styles.mediaBtn} onPress={pickImages}>
-              <Ionicons name="image-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="image-outline" size={16} color="#2F9F97" />
               <Text style={styles.mediaBtnText}>上传图片</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.mediaBtn} onPress={takeAttachmentPhoto}>
-              <Ionicons name="camera-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="camera-outline" size={16} color="#2F9F97" />
               <Text style={styles.mediaBtnText}>直接拍照</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.mediaBtn}
               onPress={isRecording ? stopRecording : startRecording}
             >
-              <Ionicons name="mic-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="mic-outline" size={16} color="#2F9F97" />
               <Text style={styles.mediaBtnText}>{isRecording ? '停止录音' : '直接录音'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.mediaBtn} onPress={pickAudio}>
-              <Ionicons name="folder-open-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="folder-open-outline" size={16} color="#2F9F97" />
               <Text style={styles.mediaBtnText}>导入语音</Text>
             </TouchableOpacity>
           </View>
@@ -435,11 +435,11 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           />
           <View style={styles.sectionActionsRow}>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => pickSectionImages(setQuestionImages)}>
-              <Ionicons name="images-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="images-outline" size={16} color="#2F9F97" />
               <Text style={styles.sectionImageBtnText}>从相册选题目图</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => takeSectionPhoto(setQuestionImages)}>
-              <Ionicons name="camera-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="camera-outline" size={16} color="#2F9F97" />
               <Text style={styles.sectionImageBtnText}>直接拍题目图</Text>
             </TouchableOpacity>
           </View>
@@ -472,11 +472,11 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           />
           <View style={styles.sectionActionsRow}>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => pickSectionImages(setWrongAnswerImages)}>
-              <Ionicons name="images-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="images-outline" size={16} color="#2F9F97" />
               <Text style={styles.sectionImageBtnText}>上传错误答案图片</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => takeSectionPhoto(setWrongAnswerImages)}>
-              <Ionicons name="camera-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="camera-outline" size={16} color="#2F9F97" />
               <Text style={styles.sectionImageBtnText}>拍错误答案图片</Text>
             </TouchableOpacity>
           </View>
@@ -507,11 +507,11 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           />
           <View style={styles.sectionActionsRow}>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => pickSectionImages(setCorrectAnswerImages)}>
-              <Ionicons name="images-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="images-outline" size={16} color="#2F9F97" />
               <Text style={styles.sectionImageBtnText}>上传正确答案图片</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => takeSectionPhoto(setCorrectAnswerImages)}>
-              <Ionicons name="camera-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="camera-outline" size={16} color="#2F9F97" />
               <Text style={styles.sectionImageBtnText}>拍正确答案图片</Text>
             </TouchableOpacity>
           </View>
@@ -571,7 +571,7 @@ export default function NewKnowledgeScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#F7F4EE' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -580,65 +580,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#E8E1D8',
+    backgroundColor: '#FFFDF8',
   },
-  cancel: { fontSize: 16, color: '#666' },
-  title: { fontSize: 17, fontWeight: '600', color: '#333' },
-  sendBtn: { backgroundColor: '#FFE66D', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, minWidth: 60, alignItems: 'center' },
+  cancel: { fontSize: 16, color: '#6F655D' },
+  title: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
+  sendBtn: { backgroundColor: '#2F9F97', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, minWidth: 60, alignItems: 'center' },
   sendBtnDisabled: { opacity: 0.72 },
-  sendText: { color: '#666', fontWeight: '600', fontSize: 14 },
+  sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   body: { padding: 16, gap: 20 },
-  fieldGroup: { gap: 8 },
-  label: { fontSize: 14, fontWeight: '600', color: '#333' },
+  fieldGroup: { gap: 8, backgroundColor: '#FFFDF8', borderRadius: 14, borderWidth: 1, borderColor: '#E8E1D8', padding: 12 },
+  label: { fontSize: 14, fontWeight: '600', color: '#2F2A24' },
   typeRow: { flexDirection: 'row', gap: 8 },
   typeChip: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 16,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#EFE8DE',
   },
-  typeChipActive: { backgroundColor: '#333' },
-  typeChipText: { fontSize: 13, color: '#666' },
+  typeChipActive: { backgroundColor: '#2F9F97' },
+  typeChipText: { fontSize: 13, color: '#6F655D' },
   typeChipTextActive: { color: '#fff' },
   subjectList: { flexDirection: 'row', gap: 8 },
   subjectChip: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 16,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#EFE8DE',
   },
-  subjectChipActive: { backgroundColor: '#4ECDC4' },
-  subjectChipText: { fontSize: 13, color: '#666' },
+  subjectChipActive: { backgroundColor: '#2F9F97' },
+  subjectChipText: { fontSize: 13, color: '#6F655D' },
   subjectCreateRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   subjectCreateInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#E8E1D8',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F9F5EE',
   },
   subjectCreateBtn: {
     paddingHorizontal: 14,
     borderRadius: 10,
     justifyContent: 'center',
-    backgroundColor: '#4ECDC4',
+    backgroundColor: '#2F9F97',
   },
   subjectCreateBtnText: { color: '#fff', fontWeight: '600' },
-  smallTip: { fontSize: 12, color: '#999', marginTop: 8 },
+  smallTip: { fontSize: 12, color: '#8A8279', marginTop: 8 },
   mediaActions: { flexDirection: 'row', gap: 10 },
   mediaBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#EAF7F6',
+    backgroundColor: '#EAF7F5',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  mediaBtnText: { color: '#4ECDC4', fontWeight: '600', fontSize: 12 },
-  recordingHint: { marginTop: 6, color: '#999', fontSize: 12 },
+  mediaBtnText: { color: '#2F9F97', fontWeight: '600', fontSize: 12 },
+  recordingHint: { marginTop: 6, color: '#8A8279', fontSize: 12 },
   imageList: { flexDirection: 'row', gap: 8, marginTop: 10 },
   imageItemWrap: { position: 'relative' },
   imageItem: { width: 80, height: 80, borderRadius: 8 },
@@ -649,7 +650,7 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#333',
+    backgroundColor: '#6F655D',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -658,32 +659,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#F9F5EE',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  audioName: { flex: 1, marginRight: 8, color: '#666', fontSize: 12 },
+  audioName: { flex: 1, marginRight: 8, color: '#6F655D', fontSize: 12 },
   tagInputRow: { flexDirection: 'row', gap: 8 },
   tagInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#E8E1D8',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F9F5EE',
   },
   tagAddBtn: {
-    backgroundColor: '#333',
+    backgroundColor: '#2F9F97',
     borderRadius: 10,
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
   tagAddText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tagChip: { backgroundColor: '#F0F0F0', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
-  tagChipText: { color: '#666', fontSize: 12 },
+  tagChip: { backgroundColor: '#EFE8DE', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  tagChipText: { color: '#6F655D', fontSize: 12 },
   sectionActionsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   sectionImageBtn: {
     flexDirection: 'row',
@@ -692,24 +693,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 10,
-    backgroundColor: '#ECFBF9',
+    backgroundColor: '#EAF7F5',
     alignSelf: 'flex-start',
   },
-  sectionImageBtnText: { color: '#4ECDC4', fontWeight: '600', fontSize: 12 },
+  sectionImageBtnText: { color: '#2F9F97', fontWeight: '600', fontSize: 12 },
   input: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#E8E1D8',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: '#333',
-    backgroundColor: '#FAFAFA',
+    color: '#2F2A24',
+    backgroundColor: '#F9F5EE',
   },
   multiline: { minHeight: 80 },
   summaryInput: {
     minHeight: 120,
-    backgroundColor: '#FFFDF0',
-    borderColor: '#FFE082',
+    backgroundColor: '#F2EEE6',
+    borderColor: '#E8E1D8',
   },
 });
