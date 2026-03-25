@@ -120,7 +120,11 @@ export default function FeedScreen({ navigation }) {
           <Avatar user={author} size={44} />
           <View style={styles.headerInfo}>
             <Text style={styles.userName}>{author.name}</Text>
-            <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
+            <View style={styles.timeRow}>
+              <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
+              {item.uploadStatus === 'uploading' && <Text style={styles.uploadHint}>上传中...</Text>}
+              {item.uploadStatus === 'failed' && <Text style={styles.uploadHintError}>上传失败</Text>}
+            </View>
           </View>
           {item.userId === currentUser.id && (
             <TouchableOpacity onPress={() => handleDeletePost(item.id, item.userId)}>
@@ -364,8 +368,11 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   headerInfo: { flex: 1, marginLeft: 10 },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
   userName: { fontWeight: '600', fontSize: 15, color: '#333' },
-  timeText: { fontSize: 12, color: '#999', marginTop: 2 },
+  timeText: { fontSize: 12, color: '#999' },
+  uploadHint: { fontSize: 11, color: '#4ECDC4', fontWeight: '600' },
+  uploadHintError: { fontSize: 11, color: '#FF6B6B', fontWeight: '600' },
   postText: { fontSize: 15, color: '#333', lineHeight: 22, marginBottom: 10 },
   mediaRow: { marginBottom: 10 },
   postImage: { width: 150, height: 150, borderRadius: 10, marginRight: 8 },

@@ -68,25 +68,23 @@ function MainTabs() {
   const currentUser = state.currentUser;
   const myPosts = (state.posts || []).filter(post => post.userId === currentUser?.id);
   const myKnowledge = (state.knowledge || []).filter(item => item.userId === currentUser?.id);
-  const lastCommentsReadAt = state.notifications?.[currentUser?.id]?.commentsReadAt || '';
+  const readInteractionIds = new Set(state.notifications?.[currentUser?.id]?.readInteractionIds || []);
 
-  const isUnreadComment = (createdAt) => {
-    if (!createdAt) return false;
-    if (!lastCommentsReadAt) return true;
-    return new Date(createdAt).getTime() > new Date(lastCommentsReadAt).getTime();
-  };
-
-  const unreadInteractions = myPosts.reduce((sum, post) => {
+  const unreadPostInteractions = myPosts.reduce((sum, post) => {
     const next = (post.comments || [])
       .filter(comment => comment.userId !== currentUser?.id)
-      .filter(comment => isUnreadComment(comment.createdAt)).length;
-    return sum + next;
-  }, 0) + myKnowledge.reduce((sum, item) => {
-    const next = (item.comments || [])
-      .filter(comment => comment.userId !== currentUser?.id)
-      .filter(comment => isUnreadComment(comment.createdAt)).length;
+      .filter(comment => !readInteractionIds.has(`post:${comment.id}`)).length;
     return sum + next;
   }, 0);
+
+  const unreadKnowledgeInteractions = myKnowledge.reduce((sum, item) => {
+    const next = (item.comments || [])
+      .filter(comment => comment.userId !== currentUser?.id)
+      .filter(comment => !readInteractionIds.has(`knowledge:${comment.id}`)).length;
+    return sum + next;
+  }, 0);
+
+  const unreadInteractions = unreadPostInteractions + unreadKnowledgeInteractions;
 
   return (
     <Tab.Navigator

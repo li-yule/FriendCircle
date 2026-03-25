@@ -11,7 +11,7 @@ import { Avatar } from '../components/Avatar';
 import { generateId } from '../utils/helpers';
 
 const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
-const MAX_VIDEO_SIZE_BYTES = 30 * 1024 * 1024;
+const MAX_VIDEO_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_VIDEO_DURATION_MS = 90 * 1000;
 
 export default function NewPostScreen({ navigation }) {
@@ -69,7 +69,7 @@ export default function NewPostScreen({ navigation }) {
     if (!result.canceled) {
       const picked = (result.assets || []).filter(asset => {
         if (asset?.fileSize && asset.fileSize > MAX_VIDEO_SIZE_BYTES) {
-          Alert.alert('视频过大', '请将视频控制在 30MB 以内');
+          Alert.alert('视频过大', '请将视频控制在 20MB 以内');
           return false;
         }
         if (asset?.duration && asset.duration > MAX_VIDEO_DURATION_MS) {
@@ -96,7 +96,7 @@ export default function NewPostScreen({ navigation }) {
     if (!result.canceled) {
       const asset = result.assets?.[0];
       if (asset?.fileSize && asset.fileSize > MAX_VIDEO_SIZE_BYTES) {
-        Alert.alert('视频过大', '请将视频控制在 30MB 以内');
+        Alert.alert('视频过大', '请将视频控制在 20MB 以内');
         return;
       }
       if (asset?.duration && asset.duration > MAX_VIDEO_DURATION_MS) {
@@ -145,6 +145,9 @@ export default function NewPostScreen({ navigation }) {
     if (!result?.ok) {
       Alert.alert('发布失败', result?.error || '请稍后重试');
       return;
+    }
+    if (result?.async) {
+      Alert.alert('发布成功', '内容已发布，媒体正在后台上传。');
     }
     navigation.goBack();
   };

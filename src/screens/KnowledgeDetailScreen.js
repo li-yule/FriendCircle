@@ -35,6 +35,12 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
 
   const author = users.find(u => u.id === liveItem.userId) || { name: '未知', avatarColor: '#ccc' };
   const liked = (liveItem.likes || []).includes(currentUser.id);
+  const siblingKnowledge = (state.knowledge || [])
+    .filter(k => k.subject === liveItem.subject)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const siblingIndex = siblingKnowledge.findIndex(k => k.id === liveItem.id);
+  const prevKnowledge = siblingIndex >= 0 && siblingIndex < siblingKnowledge.length - 1 ? siblingKnowledge[siblingIndex + 1] : null;
+  const nextKnowledge = siblingIndex > 0 ? siblingKnowledge[siblingIndex - 1] : null;
   const knowledgeMediaSections = useMemo(() => {
     const sections = [
       ...(liveItem.questionImages || []).map(uri => ({ uri, label: '题目', type: 'image' })),
@@ -272,6 +278,25 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <View style={styles.switchRow}>
+          <TouchableOpacity
+            style={[styles.switchBtn, !prevKnowledge && styles.switchBtnDisabled]}
+            disabled={!prevKnowledge}
+            onPress={() => navigation.replace('KnowledgeDetail', { item: prevKnowledge })}
+          >
+            <Ionicons name="chevron-back" size={16} color={prevKnowledge ? '#4ECDC4' : '#BBB'} />
+            <Text style={[styles.switchBtnText, !prevKnowledge && styles.switchBtnTextDisabled]}>上一题</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.switchBtn, !nextKnowledge && styles.switchBtnDisabled]}
+            disabled={!nextKnowledge}
+            onPress={() => navigation.replace('KnowledgeDetail', { item: nextKnowledge })}
+          >
+            <Text style={[styles.switchBtnText, !nextKnowledge && styles.switchBtnTextDisabled]}>下一题</Text>
+            <Ionicons name="chevron-forward" size={16} color={nextKnowledge ? '#4ECDC4' : '#BBB'} />
+          </TouchableOpacity>
+        </View>
+
         {/* 科目 & 作者 */}
         <View style={styles.metaRow}>
           <View style={styles.subjectBadge}>
@@ -574,6 +599,28 @@ const styles = StyleSheet.create({
   headerTypeTextError: { color: '#FF6B6B' },
   typeSwitchBtn: { marginRight: 10, padding: 2 },
   body: { padding: 16, gap: 16, paddingBottom: 80 },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  switchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#DDEFF0',
+    borderRadius: 14,
+    backgroundColor: '#F5FBFB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  switchBtnDisabled: {
+    backgroundColor: '#F5F5F5',
+    borderColor: '#E6E6E6',
+  },
+  switchBtnText: { color: '#4ECDC4', fontSize: 13, fontWeight: '600' },
+  switchBtnTextDisabled: { color: '#BBB' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   subjectBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: '#EAF7F6' },
   subjectText: { fontWeight: '600', fontSize: 13, color: '#4ECDC4' },

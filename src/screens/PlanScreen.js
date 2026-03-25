@@ -71,16 +71,26 @@ export default function PlanScreen({ navigation }) {
   };
 
   const renderMinePlan = (plan) => {
+    const done = (plan.tasks || []).filter(task => task.done).length;
+    const total = (plan.tasks || []).length;
+    const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+
     return (
       <View key={plan.id} style={styles.friendPlanCard}>
         <View style={styles.minePlanHeader}>
           <Text style={styles.minePlanDate}>{formatDate(plan.date)}</Text>
-          <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
-            <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
-          </TouchableOpacity>
+          <View style={styles.minePlanHeaderRight}>
+            <View style={styles.progressCircle}>
+              <Text style={styles.progressCircleText}>{percent}%</Text>
+            </View>
+            <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
+              <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {!!plan.title && <Text style={styles.friendPlanTitle}>{plan.title}</Text>}
+        {total > 0 && <Text style={styles.planProgressText}>{done}/{total} 完成</Text>}
       </View>
     );
   };
@@ -225,7 +235,20 @@ const styles = StyleSheet.create({
   },
   friendPlanHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   minePlanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  minePlanHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   minePlanDate: { fontSize: 12, color: '#8A969E' },
+  progressCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#FF6B6B',
+    backgroundColor: '#FFF5F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressCircleText: { fontSize: 11, fontWeight: '700', color: '#FF6B6B' },
+  planProgressText: { marginTop: 8, fontSize: 12, color: '#FF6B6B', fontWeight: '600' },
   friendPlanInfo: { flex: 1, marginLeft: 10 },
   friendPlanAuthor: { fontSize: 15, fontWeight: '700', color: '#31404A' },
   friendPlanDate: { marginTop: 2, fontSize: 12, color: '#8A969E' },

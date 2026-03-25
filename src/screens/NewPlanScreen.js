@@ -72,7 +72,7 @@ export default function NewPlanScreen({ navigation }) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '规划提醒',
-        body: `别忘了：${titleText}`,
+        body: `${dateText} ${timeText} · ${titleText}`,
         sound: true,
       },
       trigger: {

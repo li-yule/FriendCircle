@@ -17,33 +17,11 @@ export default function ProfileScreen({ navigation }) {
   const [showInteractions, setShowInteractions] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name || '');
   const [bioInput, setBioInput] = useState(currentUser.bio || '');
-  const lastCommentsReadAt = state.notifications?.[currentUser.id]?.commentsReadAt || '';
-
-  const isUnreadComment = (createdAt) => {
-    if (!createdAt) return false;
-    if (!lastCommentsReadAt) return true;
-    return new Date(createdAt).getTime() > new Date(lastCommentsReadAt).getTime();
-  };
+  const readInteractionIds = new Set(state.notifications?.[currentUser.id]?.readInteractionIds || []);
 
   const myPosts = posts.filter(p => p.userId === currentUser.id);
   const myPlans = plans.filter(p => p.userId === currentUser.id);
-  const incomingCommentCount = useMemo(() => {
-    const postComments = myPosts.reduce((sum, post) => {
-      const next = (post.comments || [])
-        .filter(comment => comment.userId !== currentUser.id)
-        .filter(comment => isUnreadComment(comment.createdAt)).length;
-      return sum + next;
-    }, 0);
-    const knowledgeComments = (knowledge || [])
-      .filter(item => item.userId === currentUser.id)
-      .reduce((sum, item) => {
-        const next = (item.comments || [])
-          .filter(comment => comment.userId !== currentUser.id)
-          .filter(comment => isUnreadComment(comment.createdAt)).length;
-        return sum + next;
-      }, 0);
-    return postComments + knowledgeComments;
-  }, [currentUser.id, knowledge, myPosts, lastCommentsReadAt]);
+  const interactionKeyOf = (interaction) => `${interaction.sourceType}:${interaction.id}`;
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
       (post.comments || [])
@@ -81,6 +59,10 @@ export default function ProfileScreen({ navigation }) {
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       .slice(0, 30);
   }, [currentUser.id, knowledge, myPosts, users]);
+  const incomingCommentCount = useMemo(
+    () => incomingInteractions.filter(item => !readInteractionIds.has(interactionKeyOf(item))).length,
+    [incomingInteractions, readInteractionIds]
+  );
     const myPlanDailyProgress = useMemo(() => {
       const map = new Map();
       myPlans.forEach(plan => {
@@ -235,7 +217,12 @@ export default function ProfileScreen({ navigation }) {
     );
   };
 
-  const openInteraction = (interaction) => {
+  const openInteraction = async (interaction) => {
+    await dispatch({
+      type: 'MARK_INTERACTION_READ',
+      payload: { userId: currentUser.id, interactionKey: interactionKeyOf(interaction) },
+    });
+
     if (interaction.sourceType === 'post') {
       navigation.navigate('PostDetail', { postId: interaction.sourceId });
       return;
@@ -246,14 +233,8 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const handleToggleInteractions = async () => {
-    const nextVisible = !showInteractions;
-    setShowInteractions(nextVisible);
-    if (!nextVisible) return;
-    await dispatch({
-      type: 'MARK_NOTIFICATIONS_READ',
-      payload: { userId: currentUser.id, readAt: new Date().toISOString() },
-    });
+  const handleToggleInteractions = () => {
+    setShowInteractions(prev => !prev);
   };
 
   return (
@@ -344,12 +325,18 @@ export default function ProfileScreen({ navigation }) {
 
       {showInteractions && (
         <View style={styles.interactionPanel}>
-          <Text style={styles.sectionTitle}>互动消息</Text>
+          <View style={styles.interactionHeader}>
+            <Text style={styles.sectionTitle}>互动消息</Text>
+            <TouchableOpacity onPress={() => setShowInteractions(false)}>
+              <Ionicons name="close" size={18} color="#999" />
+            </TouchableOpacity>
+          </View>
           {incomingInteractions.length === 0 ? (
             <Text style={styles.tipText}>暂无互动</Text>
           ) : incomingInteractions.map(item => (
             <TouchableOpacity key={`${item.sourceType}_${item.id}`} style={styles.interactionItem} onPress={() => openInteraction(item)}>
               <Avatar user={item.fromUser} size={28} />
+              {!readInteractionIds.has(interactionKeyOf(item)) && <View style={styles.unreadDot} />}
               <View style={styles.interactionTextWrap}>
                 <Text style={styles.interactionTitle}>{item.fromUser.name}{item.isReplyToMe ? ' 回复了你' : ' 评论了你'}</Text>
                 <Text style={styles.interactionMeta} numberOfLines={1}>
@@ -446,7 +433,7 @@ const styles = StyleSheet.create({
   profileCardTopRight: {
     position: 'absolute',
     right: 16,
-    top: 18,
+    top: 58,
     zIndex: 2,
   },
   msgIconBtn: {
@@ -514,7 +501,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
+  interactionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   interactionItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF6B6B',
+  },
   interactionTextWrap: { flex: 1 },
   interactionTitle: { fontSize: 12, color: '#333', fontWeight: '600' },
   interactionMeta: { fontSize: 11, color: '#9AA5AE', marginTop: 2 },

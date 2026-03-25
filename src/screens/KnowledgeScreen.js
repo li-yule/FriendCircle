@@ -113,14 +113,14 @@ export default function KnowledgeScreen({ navigation }) {
         <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('KnowledgeDetail', { item })}>
           {/* 题目 */}
           <View style={styles.questionHeader}>
-            <Text style={styles.question} numberOfLines={3}>
-              {item.question || (item.questionImages?.length > 0 ? '[图片题目]' : '未填写题目内容')}
-            </Text>
             <View style={[styles.typeBadge, (item.type || 'knowledge_point') === 'error_item' ? styles.typeBadgeError : styles.typeBadgeKnowledge]}>
               <Text style={[styles.typeBadgeText, (item.type || 'knowledge_point') === 'error_item' ? styles.typeTextError : styles.typeTextKnowledge]}>
                 {(item.type || 'knowledge_point') === 'error_item' ? '错误项' : '学习要点'}
               </Text>
             </View>
+            <Text style={styles.question} numberOfLines={3}>
+              {item.question || (item.questionImages?.length > 0 ? '[图片题目]' : '未填写题目内容')}
+            </Text>
           </View>
 
           {item.questionImages?.length > 0 && (
@@ -365,9 +365,9 @@ const styles = StyleSheet.create({
   subjectBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   subjectName: { fontSize: 12, fontWeight: '600' },
   timeText: { fontSize: 12, color: '#bbb' },
-  questionHeader: { marginBottom: 8, gap: 6 },
+  questionHeader: { marginBottom: 8, position: 'relative', paddingTop: 26 },
   question: { fontSize: 15, color: '#333', lineHeight: 22, marginBottom: 8, fontWeight: '500' },
-  typeBadge: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
+  typeBadge: { position: 'absolute', right: 0, top: 0, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
   typeBadgeKnowledge: { backgroundColor: '#4ECDC422' },
   typeBadgeError: { backgroundColor: '#FF6B6B22' },
   typeBadgeText: { fontSize: 11, fontWeight: '600' },

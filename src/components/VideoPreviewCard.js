@@ -5,6 +5,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 
 export default function VideoPreviewCard({ uri, label = '视频动态', style }) {
   const [playing, setPlaying] = useState(false);
+  const [activated, setActivated] = useState(false);
 
   const player = useVideoPlayer(uri, playerInstance => {
     playerInstance.loop = false;
@@ -18,6 +19,8 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style })
         player.pause();
         setPlaying(false);
       } else {
+        setActivated(true);
+        player.muted = false;
         player.play();
         setPlaying(true);
       }
@@ -39,17 +42,20 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style })
 
   return (
     <View style={[styles.container, style]}>
-      <VideoView
-        player={player}
-        style={StyleSheet.absoluteFillObject}
-        nativeControls={false}
-        contentFit="cover"
-        surfaceType="textureView"
-      />
+      {activated ? (
+        <VideoView
+          player={player}
+          style={StyleSheet.absoluteFillObject}
+          nativeControls={false}
+          contentFit="cover"
+          surfaceType="textureView"
+        />
+      ) : null}
       <View style={styles.overlay} pointerEvents="none">
         <Ionicons name={playing ? 'pause-circle' : 'play-circle'} size={42} color="#fff" />
         <Text style={styles.label}>{label}</Text>
       </View>
+      <TouchableOpacity style={styles.centerHotArea} onPress={togglePlay} />
       <TouchableOpacity style={styles.playHotArea} onPress={togglePlay}>
         <View style={styles.playButton}>
           <Ionicons name={playing ? 'pause' : 'play'} size={16} color="#fff" />
@@ -80,6 +86,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 10,
     top: 10,
+  },
+  centerHotArea: {
+    ...StyleSheet.absoluteFillObject,
   },
   playButton: {
     width: 28,

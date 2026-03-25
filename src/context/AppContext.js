@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useReducer, useRef } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_SUBJECTS, INITIAL_USERS } from '../data/initialData';
 import { generateId } from '../utils/helpers';
 import { isSupabaseConfigured, mediaBucketName, supabase } from '../lib/supabase';
@@ -12,8 +13,9 @@ const CLOUD_POSTS_LIMIT = 80;
 const CLOUD_PLANS_LIMIT = 80;
 const CLOUD_KNOWLEDGE_LIMIT = 80;
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_UPLOAD_BYTES = 30 * 1024 * 1024;
+const MAX_VIDEO_UPLOAD_BYTES = 20 * 1024 * 1024;
 const LOCAL_MUTATION_MUTE_MS = 2500;
+const AUTH_CACHE_KEY = 'friendcircle_auth_cache_v1';
 
 const initialState = {
   currentUser: null,
@@ -145,6 +147,8 @@ function normalizePost(item) {
     likes: toUniqueStrings(item?.likes),
     comments: ensureArray(item?.comments).map(normalizeComment),
     createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
+    uploadStatus: item?.uploadStatus || item?.upload_status || 'done',
+    uploadError: item?.uploadError || item?.upload_error || '',
   };
 }
 
@@ -400,6 +404,28 @@ function reducer(state, action) {
       };
     }
 
+    case 'MARK_INTERACTION_READ': {
+      const userId = action.payload?.userId;
+      const interactionKey = String(action.payload?.interactionKey || '').trim();
+      if (!userId || !interactionKey) return state;
+      const currentMap = normalizeNotifications(state.notifications);
+      const currentUserNotification = currentMap[userId] || {};
+      const currentReadIds = Array.isArray(currentUserNotification.readInteractionIds)
+        ? currentUserNotification.readInteractionIds
+        : [];
+      if (currentReadIds.includes(interactionKey)) return state;
+      return {
+        ...state,
+        notifications: {
+          ...currentMap,
+          [userId]: {
+            ...currentUserNotification,
+            readInteractionIds: [...currentReadIds, interactionKey],
+          },
+        },
+      };
+    }
+
     case 'UPDATE_PROFILE': {
       if (!state.currentUser) return state;
       const { name, bio } = action.payload;
@@ -477,6 +503,18 @@ function reducer(state, action) {
 
     case 'ADD_POST':
       return { ...state, posts: [normalizePost(action.payload), ...state.posts] };
+
+    case 'PATCH_POST_LOCAL': {
+      const { postId, changes } = action.payload || {};
+      if (!postId || !changes) return state;
+      return {
+        ...state,
+        posts: state.posts.map(post => {
+          if (post.id !== postId) return post;
+          return normalizePost({ ...post, ...changes });
+        }),
+      };
+    }
 
     case 'DELETE_POST':
       return { ...state, posts: state.posts.filter(post => post.id !== action.payload) };
@@ -651,7 +689,7 @@ async function uploadAssetIfNeeded(userId, uri, folder) {
   const isVideoFile = folder.includes('video');
   const maxBytes = isVideoFile ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
   if (size > maxBytes) {
-    throw new Error(isVideoFile ? '视频文件过大，请控制在 30MB 以内' : '图片文件过大，请控制在 10MB 以内');
+    throw new Error(isVideoFile ? '视频文件过大，请控制在 20MB 以内' : '图片文件过大，请控制在 10MB 以内');
   }
 
   const extension = inferFileExtension(uri, folder.includes('audio') ? 'm4a' : 'jpg');
@@ -684,6 +722,17 @@ async function uploadAssetList(userId, items, folder) {
   return Promise.all(toUniqueStrings(items).map(uri => uploadAssetIfNeeded(userId, uri, folder)));
 }
 
+async function uploadAssetListSequential(userId, items, folder) {
+  const result = [];
+  const list = toUniqueStrings(items);
+  for (const uri of list) {
+    // 视频串行上传更稳定，避免高内存同时峰值导致闪退
+    const uploaded = await uploadAssetIfNeeded(userId, uri, folder);
+    result.push(uploaded);
+  }
+  return result;
+}
+
 async function uploadAudioFiles(userId, files, folder) {
   const uploaded = await Promise.all(ensureArray(files).map(async file => {
     const normalized = normalizeAudioFile(file);
@@ -700,7 +749,7 @@ async function preparePostPayload(userId, payload) {
   return normalizePost({
     ...payload,
     images: await uploadAssetList(userId, payload.images, 'posts/images'),
-    videos: await uploadAssetList(userId, payload.videos, 'posts/videos'),
+    videos: await uploadAssetListSequential(userId, payload.videos, 'posts/videos'),
   });
 }
 
@@ -933,6 +982,24 @@ export function AppProvider({ children }) {
           cloudUserIdRef.current = data.session.user.id;
           await hydrate(data.session.user.id);
         } else {
+          // 兜底：进程被系统杀死后如果 session 丢失，尝试使用最近一次成功登录凭据自动恢复
+          const cacheRaw = await AsyncStorage.getItem(AUTH_CACHE_KEY);
+          const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
+          const account = normalizeAccount(cache?.account);
+          const password = String(cache?.password || '');
+
+          if (account && password) {
+            const signInRes = await supabase.auth.signInWithPassword({
+              email: buildAuthEmail(account),
+              password,
+            });
+            if (signInRes?.data?.user?.id) {
+              cloudUserIdRef.current = signInRes.data.user.id;
+              await hydrate(signInRes.data.user.id);
+              return;
+            }
+          }
+
           cloudUserIdRef.current = null;
           baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
         }
@@ -1041,6 +1108,8 @@ export function AppProvider({ children }) {
               name: account,
             }),
           });
+
+          await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
         }
 
         return { ok: true };
@@ -1112,17 +1181,25 @@ export function AppProvider({ children }) {
           }),
         });
 
+        await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
+
         return { ok: true };
       }
 
       if (action.type === 'LOGOUT') {
         const { error } = await supabase.auth.signOut();
         if (error) return { ok: false, error: '退出登录失败' };
+        await AsyncStorage.removeItem(AUTH_CACHE_KEY);
         baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
         return { ok: true };
       }
 
       if (action.type === 'MARK_NOTIFICATIONS_READ') {
+        baseDispatch(action);
+        return { ok: true };
+      }
+
+      if (action.type === 'MARK_INTERACTION_READ') {
         baseDispatch(action);
         return { ok: true };
       }
@@ -1185,10 +1262,56 @@ export function AppProvider({ children }) {
         if (error) return { ok: false, error: '删除学科失败' };
       } else if (action.type === 'ADD_POST') {
         markLocalMutation('posts');
-        const payload = await preparePostPayload(currentUser.id, action.payload);
+        const draft = normalizePost(action.payload);
+        const hasMedia = (draft.images || []).length > 0 || (draft.videos || []).length > 0;
+
+        if (hasMedia) {
+          const optimistic = normalizePost({
+            ...draft,
+            uploadStatus: 'uploading',
+            uploadError: '',
+          });
+
+          baseDispatch({ type: 'ADD_POST', payload: optimistic });
+
+          (async () => {
+            try {
+              const uploaded = await preparePostPayload(currentUser.id, draft);
+              const { error } = await supabase.from('posts').insert(serializePost(uploaded));
+              if (error) throw error;
+
+              baseDispatch({
+                type: 'PATCH_POST_LOCAL',
+                payload: {
+                  postId: optimistic.id,
+                  changes: {
+                    ...uploaded,
+                    uploadStatus: 'done',
+                    uploadError: '',
+                  },
+                },
+              });
+            } catch (error) {
+              baseDispatch({
+                type: 'PATCH_POST_LOCAL',
+                payload: {
+                  postId: optimistic.id,
+                  changes: {
+                    uploadStatus: 'failed',
+                    uploadError: getFriendlyErrorMessage(error, '上传失败，请重试或删除后重发'),
+                  },
+                },
+              });
+            }
+          })();
+
+          return { ok: true, async: true };
+        }
+
+        const payload = await preparePostPayload(currentUser.id, draft);
         const { error } = await supabase.from('posts').insert(serializePost(payload));
         if (error) return { ok: false, error: '发布动态失败' };
-        baseDispatch({ type: 'ADD_POST', payload });
+        baseDispatch({ type: 'ADD_POST', payload: { ...payload, uploadStatus: 'done' } });
         return { ok: true };
       } else if (action.type === 'DELETE_POST') {
         markLocalMutation('posts');
