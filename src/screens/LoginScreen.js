@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     marginTop: 8,
-    backgroundColor: '#2F9F97',
+    backgroundColor: '#C49A4B',
     borderRadius: 12,
     alignItems: 'center',
     paddingVertical: 12,
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   linkBtn: { marginTop: 12, alignItems: 'center' },
-  linkText: { color: '#2F9F97', fontWeight: '500' },
+  linkText: { color: '#C49A4B', fontWeight: '500' },
   demoBox: {
     marginTop: 16,
     backgroundColor: '#EAF7F5',

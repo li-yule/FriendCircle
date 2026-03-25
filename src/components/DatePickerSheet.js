@@ -185,12 +185,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayCellSelected: {
-    backgroundColor: '#EAF7F5',
+    backgroundColor: '#F6EEDC',
     borderWidth: 1.5,
-    borderColor: '#2F9F97',
+    borderColor: '#C49A4B',
   },
   dayCellDisabled: { opacity: 0.35 },
   dayText: { color: '#6F655D', fontSize: 15 },
-  dayTextSelected: { color: '#2F9F97', fontWeight: '700' },
+  dayTextSelected: { color: '#C49A4B', fontWeight: '700' },
   dayTextDisabled: { color: '#AAA' },
 });

@@ -90,7 +90,7 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#2F9F97',
+        tabBarActiveTintColor: '#C49A4B',
         tabBarInactiveTintColor: '#8A8279',
         tabBarStyle: {
           backgroundColor: '#FFFDF8',
@@ -147,7 +147,7 @@ function AuthNavigator() {
 function LoadingScreen() {
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
-      <ActivityIndicator size="large" color="#2F9F97" />
+      <ActivityIndicator size="large" color="#C49A4B" />
       <Text style={{ marginTop: 12, color: '#6E655C' }}>正在加载数据...</Text>
     </View>
   );

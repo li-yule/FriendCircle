@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Video } from 'expo-av';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import { generateId } from '../utils/helpers';
@@ -222,12 +221,10 @@ export default function NewPostScreen({ navigation }) {
           <View style={styles.videoList}>
             {videos.map((uri, idx) => (
               <View key={`${uri}_${idx}`} style={styles.videoWrapper}>
-                <Video
-                  source={{ uri }}
-                  style={styles.previewVideo}
-                  useNativeControls
-                  resizeMode="cover"
-                />
+                <View style={styles.previewVideoPlaceholder}>
+                  <Ionicons name="videocam" size={28} color="#C49A4B" />
+                  <Text style={styles.previewVideoText}>已选择视频 {idx + 1}</Text>
+                </View>
                 <TouchableOpacity style={styles.removeBtn} onPress={() => removeVideo(idx)}>
                   <Ionicons name="close-circle" size={22} color="#fff" />
                 </TouchableOpacity>
@@ -284,7 +281,7 @@ const styles = StyleSheet.create({
   },
   cancel: { fontSize: 16, color: '#6F655D' },
   title: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
-  sendBtn: { backgroundColor: '#2F9F97', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20 },
+  sendBtn: { backgroundColor: '#C49A4B', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20 },
   sendBtnDisabled: { opacity: 0.75 },
   sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   body: { padding: 16 },
@@ -304,7 +301,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emojiToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  emojiToggleText: { color: '#2F9F97', fontSize: 13, fontWeight: '600' },
+  emojiToggleText: { color: '#C49A4B', fontSize: 13, fontWeight: '600' },
   textCount: { fontSize: 12, color: '#B3B3B3' },
   emojiPanel: {
     flexDirection: 'row',
@@ -331,7 +328,18 @@ const styles = StyleSheet.create({
   previewImage: { width: 100, height: 100, borderRadius: 8 },
   videoList: { gap: 10, marginBottom: 16 },
   videoWrapper: { position: 'relative' },
-  previewVideo: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#111' },
+  previewVideoPlaceholder: {
+    width: '100%',
+    height: 110,
+    borderRadius: 12,
+    backgroundColor: '#F6EEDC',
+    borderWidth: 1,
+    borderColor: '#E9DDBF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  previewVideoText: { color: '#8A7242', fontSize: 13, fontWeight: '600' },
   removeBtn: {
     position: 'absolute',
     top: -8,
@@ -340,8 +348,8 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   mediaButtons: { flexDirection: 'row', gap: 20, marginTop: 8 },
-  mediaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EAF7F5', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8 },
-  mediaBtnText: { color: '#2F9F97', fontSize: 14 },
+  mediaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F6EEDC', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8 },
+  mediaBtnText: { color: '#8A7242', fontSize: 14 },
   uploadingNotice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -349,7 +357,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: '#EAF7F5',
+    backgroundColor: '#F6EEDC',
   },
-  uploadingText: { color: '#2F9F97', fontSize: 13, flex: 1, lineHeight: 18 },
+  uploadingText: { color: '#8A7242', fontSize: 13, flex: 1, lineHeight: 18 },
 });

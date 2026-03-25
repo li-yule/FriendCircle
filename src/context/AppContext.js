@@ -16,6 +16,7 @@ const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_UPLOAD_BYTES = 20 * 1024 * 1024;
 const LOCAL_MUTATION_MUTE_MS = 2500;
 const AUTH_CACHE_KEY = 'friendcircle_auth_cache_v1';
+const NOTIFICATIONS_CACHE_KEY = 'friendcircle_notifications_cache_v1';
 
 const initialState = {
   currentUser: null,
@@ -271,14 +272,14 @@ function sanitizeLoadedState(parsed) {
   };
 }
 
-function createEmptyLoadedState() {
+function createEmptyLoadedState(notifications = {}) {
   return {
     ...initialState,
     users: [],
     posts: [],
     plans: [],
     knowledge: [],
-    notifications: {},
+    notifications: normalizeNotifications(notifications),
     currentUser: null,
     loaded: true,
   };
@@ -693,9 +694,37 @@ async function uploadAssetIfNeeded(userId, uri, folder) {
   }
 
   const extension = inferFileExtension(uri, folder.includes('audio') ? 'm4a' : 'jpg');
+  const path = `${userId}/${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
+
+  if (isVideoFile) {
+    const { data: signedData, error: signedError } = await supabase
+      .storage
+      .from(mediaBucketName)
+      .createSignedUploadUrl(path);
+
+    if (signedError || !signedData?.signedUrl) {
+      throw signedError || new Error('视频上传签名失败');
+    }
+
+    const uploadResult = await FileSystem.uploadAsync(signedData.signedUrl, uri, {
+      httpMethod: 'PUT',
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      headers: {
+        'content-type': getContentType(extension),
+      },
+    });
+
+    if (!uploadResult || (uploadResult.status !== 200 && uploadResult.status !== 201)) {
+      throw new Error('视频上传失败，请稍后重试');
+    }
+
+    const { data } = supabase.storage.from(mediaBucketName).getPublicUrl(path);
+    return data.publicUrl;
+  }
+
   let arrayBuffer;
 
-  // 首选 fetch(file://).arrayBuffer，通常比 base64 路径更快、更省内存
+  // 图片与小文件继续走内存上传，兼容性更好
   try {
     const response = await fetch(uri);
     arrayBuffer = await response.arrayBuffer();
@@ -705,7 +734,6 @@ async function uploadAssetIfNeeded(userId, uri, folder) {
     });
     arrayBuffer = decode(base64);
   }
-  const path = `${userId}/${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
 
   const { error } = await supabase.storage.from(mediaBucketName).upload(path, arrayBuffer, {
     contentType: getContentType(extension),
@@ -924,19 +952,35 @@ export function AppProvider({ children }) {
   }, [state]);
 
   useEffect(() => {
+    AsyncStorage
+      .setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(normalizeNotifications(state.notifications)))
+      .catch(() => {});
+  }, [state.notifications]);
+
+  useEffect(() => {
     if (!isSupabaseConfigured) {
       baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
       return undefined;
     }
 
-    baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
-
     let active = true;
+    let cachedNotifications = {};
+
+    const loadCachedNotifications = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(NOTIFICATIONS_CACHE_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return normalizeNotifications(parsed);
+      } catch {
+        return {};
+      }
+    };
 
     const hydrate = async (userId) => {
       const snapshot = await fetchCloudState(userId);
       if (!active) return;
       cloudUserIdRef.current = userId;
+      snapshot.notifications = normalizeNotifications(cachedNotifications);
       baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
     };
 
@@ -975,6 +1019,11 @@ export function AppProvider({ children }) {
 
     const loadCloud = async () => {
       try {
+        cachedNotifications = await loadCachedNotifications();
+        if (active) {
+          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+        }
+
         const { data } = await supabase.auth.getSession();
         if (!active) return;
 
@@ -1001,7 +1050,7 @@ export function AppProvider({ children }) {
           }
 
           cloudUserIdRef.current = null;
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
         }
       } catch {
         if (active) {
@@ -1016,7 +1065,7 @@ export function AppProvider({ children }) {
         scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
       } else if (active) {
         cloudUserIdRef.current = null;
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
       }
     });
 
@@ -1190,7 +1239,7 @@ export function AppProvider({ children }) {
         const { error } = await supabase.auth.signOut();
         if (error) return { ok: false, error: '退出登录失败' };
         await AsyncStorage.removeItem(AUTH_CACHE_KEY);
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(stateRef.current.notifications) });
         return { ok: true };
       }
 
