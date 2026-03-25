@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Linking,
@@ -20,6 +20,23 @@ export default function NewPlanScreen({ navigation }) {
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [permissionTip, setPermissionTip] = useState('通知权限状态未检测');
+
+  useEffect(() => {
+    let active = true;
+    Notifications.getPermissionsAsync().then(permission => {
+      if (!active) return;
+      if (permission.granted) {
+        setPermissionTip('通知权限已开启，可收到系统提醒');
+      } else {
+        setPermissionTip('通知权限未开启，系统提醒不可用');
+      }
+    }).catch(() => {
+      if (active) setPermissionTip('通知权限状态未检测');
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function getTodayStr() {
     const d = new Date();
@@ -55,16 +72,9 @@ export default function NewPlanScreen({ navigation }) {
       });
     }
 
-    let permission = await Notifications.getPermissionsAsync();
-    if (!permission.granted) {
-      permission = await Notifications.requestPermissionsAsync();
-    }
+    const permission = await Notifications.getPermissionsAsync();
     if (!permission.granted) {
       setPermissionTip('通知权限未开启，系统提醒不可用');
-      Alert.alert('提醒未开启', '请在系统设置里允许通知权限，才能收到规划提醒。', [
-        { text: '取消', style: 'cancel' },
-        { text: '去设置', onPress: () => Linking.openSettings().catch(() => {}) },
-      ]);
       return;
     }
     setPermissionTip('通知权限已开启，可收到系统提醒');

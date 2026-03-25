@@ -181,7 +181,7 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.thumbText} numberOfLines={3}>{item.text}</Text>
           </View>
         )}
-        {mediaLabel ? <Text style={styles.mediaBadge}>{mediaLabel}</Text> : null}
+        <Text style={styles.mediaBadge}>{mediaLabel || ' '}</Text>
         <Text style={styles.miniCaption} numberOfLines={2}>
           {item.text || (hasVideos ? '点击查看视频内容' : '图片动态')}
         </Text>
@@ -421,10 +421,10 @@ export default function ProfileScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  container: { flex: 1, backgroundColor: '#F7F4EE' },
   contentContainer: { paddingBottom: 40 },
   profileCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     paddingTop: 60,
     paddingHorizontal: 20,
     paddingBottom: 20,
@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F5F7F7',
+    backgroundColor: '#F3EDE4',
   },
   msgBadge: {
     position: 'absolute',
@@ -459,8 +459,8 @@ const styles = StyleSheet.create({
   msgBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   profileTop: { flexDirection: 'row', gap: 16, alignItems: 'center', marginBottom: 20 },
   profileInfo: { flex: 1 },
-  profileName: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 6 },
-  profileBio: { fontSize: 14, color: '#888', lineHeight: 20 },
+  profileName: { fontSize: 22, fontWeight: 'bold', color: '#2F2A24', marginBottom: 6 },
+  profileBio: { fontSize: 14, color: '#7D746B', lineHeight: 20 },
   editInput: {
     backgroundColor: '#F5F5F5',
     borderRadius: 10,
@@ -472,16 +472,16 @@ const styles = StyleSheet.create({
   editBioInput: { minHeight: 44 },
   accountRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   accountActions: { flexDirection: 'row', gap: 8 },
-  accountTag: { fontSize: 12, color: '#4ECDC4', fontWeight: '700' },
-  accountBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#E8F9F8' },
-  accountBtnText: { color: '#4ECDC4', fontWeight: '600', fontSize: 12 },
+  accountTag: { fontSize: 12, color: '#2F9F97', fontWeight: '700' },
+  accountBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#E9F7F5' },
+  accountBtnText: { color: '#2F9F97', fontWeight: '600', fontSize: 12 },
   logoutBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#FFEAEA' },
   logoutBtnText: { color: '#FF6B6B', fontWeight: '600', fontSize: 12 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderTopColor: '#F5F5F5', paddingTop: 16 },
   stat: { alignItems: 'center' },
   statNum: { fontSize: 22, fontWeight: 'bold', color: '#333' },
   statLabel: { fontSize: 13, color: '#999', marginTop: 2 },
-  section: { backgroundColor: '#fff', padding: 16, marginBottom: 12 },
+  section: { backgroundColor: '#FFFDF8', padding: 16, marginBottom: 12 },
   noticeBar: {
     marginHorizontal: 12,
     marginBottom: 12,
@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
   },
   noticeText: { color: '#E67A2E', fontSize: 13, fontWeight: '600' },
   interactionPanel: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     marginHorizontal: 12,
     marginBottom: 12,
     borderRadius: 12,
@@ -514,7 +514,7 @@ const styles = StyleSheet.create({
   interactionMeta: { fontSize: 11, color: '#9AA5AE', marginTop: 2 },
   interactionContent: { fontSize: 12, color: '#777', marginTop: 2 },
   interactionTime: { fontSize: 11, color: '#BBB' },
-  sectionTitle: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 12 },
+  sectionTitle: { fontSize: 15, fontWeight: '600', color: '#2F2A24', marginBottom: 12 },
   userList: { flexDirection: 'row', gap: 12 },
   userChip: {
     alignItems: 'center',
@@ -526,15 +526,15 @@ const styles = StyleSheet.create({
   },
   userChipName: { fontSize: 12, color: '#666', marginTop: 4 },
   tipText: { color: '#999', fontSize: 13 },
-  tabs: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F0F0F0', marginBottom: 12 },
+  tabs: { flexDirection: 'row', backgroundColor: '#FFFDF8', borderBottomWidth: 1, borderBottomColor: '#E8E1D8', marginBottom: 12 },
   tab: { flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 12 },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#4ECDC4' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: '#2F9F97' },
   tabText: { fontSize: 13, color: '#999' },
-  tabTextActive: { color: '#4ECDC4', fontWeight: '600' },
+  tabTextActive: { color: '#2F9F97', fontWeight: '600' },
   postsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 8 },
-  miniCard: { width: '30%' },
+  miniCard: { width: '30%', minHeight: 190 },
   miniImg: { width: '100%', aspectRatio: 1, borderRadius: 10 },
-  textThumb: { backgroundColor: '#E8F9F8', justifyContent: 'center', padding: 6 },
+  textThumb: { backgroundColor: '#E9F7F5', justifyContent: 'center', padding: 6 },
   videoThumbWrap: { position: 'relative' },
   videoThumbPlaceholder: {
     overflow: 'hidden',
@@ -547,12 +547,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.18)',
     borderRadius: 10,
   },
-  thumbText: { fontSize: 11, color: '#4ECDC4', lineHeight: 16 },
-  mediaBadge: { fontSize: 10, color: '#4ECDC4', marginTop: 6, fontWeight: '700' },
-  miniCaption: { fontSize: 11, color: '#666', lineHeight: 15, marginTop: 2, minHeight: 30 },
-  miniTime: { fontSize: 10, color: '#bbb', marginTop: 4, textAlign: 'left' },
+  thumbText: { fontSize: 11, color: '#2F9F97', lineHeight: 16 },
+  mediaBadge: { fontSize: 10, color: '#2F9F97', marginTop: 6, fontWeight: '700', minHeight: 14 },
+  miniCaption: { fontSize: 11, color: '#6F655D', lineHeight: 15, marginTop: 2, minHeight: 32 },
+  miniTime: { fontSize: 10, color: '#A79C90', marginTop: 'auto', textAlign: 'left', paddingTop: 4 },
   planList: { paddingHorizontal: 12, gap: 10 },
-  planItem: { backgroundColor: '#fff', borderRadius: 14, padding: 14 },
+  planItem: { backgroundColor: '#FFFDF8', borderRadius: 14, padding: 14 },
   planItemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   planHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   planItemTitle: { fontSize: 15, fontWeight: '600', color: '#333' },
@@ -581,7 +581,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     borderRadius: 14,
     padding: 14,
   },

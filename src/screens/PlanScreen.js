@@ -45,12 +45,31 @@ export default function PlanScreen({ navigation }) {
 
   const data = (activeTab === 'mine' ? myPlans : friendPlans).filter(item => toDateKey(item.date) === selectedDate);
 
+  const selectedSummary = useMemo(() => {
+    const mineToday = myPlans.filter(item => toDateKey(item.date) === selectedDate);
+    const total = mineToday.reduce((sum, item) => sum + (item.tasks || []).length, 0);
+    const done = mineToday.reduce((sum, item) => sum + (item.tasks || []).filter(task => task.done).length, 0);
+    const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+    return { done, total, percent };
+  }, [myPlans, selectedDate]);
+
   const moveSelectedDate = (offset) => {
     if (availableDateKeys.length === 0) return;
-    const idx = availableDateKeys.indexOf(selectedDate);
-    const safeIdx = idx < 0 ? 0 : idx;
-    const nextIdx = Math.min(availableDateKeys.length - 1, Math.max(0, safeIdx + offset));
-    setSelectedDate(availableDateKeys[nextIdx]);
+    const currentTs = new Date(`${selectedDate}T00:00:00`).getTime();
+    if (Number.isNaN(currentTs)) return;
+
+    if (offset < 0) {
+      const previous = availableDateKeys
+        .filter(key => new Date(`${key}T00:00:00`).getTime() < currentTs)
+        .sort((a, b) => new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`))[0];
+      if (previous) setSelectedDate(previous);
+      return;
+    }
+
+    const next = availableDateKeys
+      .filter(key => new Date(`${key}T00:00:00`).getTime() > currentTs)
+      .sort((a, b) => new Date(`${a}T00:00:00`) - new Date(`${b}T00:00:00`))[0];
+    if (next) setSelectedDate(next);
   };
 
   const handleDeletePlan = (plan) => {
@@ -155,6 +174,20 @@ export default function PlanScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {activeTab === 'mine' && (
+        <View style={styles.ringWrap}>
+          <View style={styles.ringOuter}>
+            <View style={styles.ringDot} />
+            <View style={styles.ringInner}>
+              <Text style={styles.ringCount}>{selectedSummary.done}</Text>
+              <Text style={styles.ringPercent}>{selectedSummary.percent}%</Text>
+              <Text style={styles.ringLabel}>完成度</Text>
+            </View>
+          </View>
+          <Text style={styles.ringSubText}>{selectedSummary.done}/{selectedSummary.total} 项已完成</Text>
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.list}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionMarker} />
@@ -187,48 +220,79 @@ export default function PlanScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3F5F7' },
+  container: { flex: 1, backgroundColor: '#F7F4EE' },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#2D3741' },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#2F2A24' },
   addBtn: {
-    backgroundColor: '#19C2AF',
+    backgroundColor: '#2F9F97',
     width: 36,
     height: 36,
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  tabs: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  tabs: { flexDirection: 'row', backgroundColor: '#FFFDF8', borderBottomWidth: 1, borderBottomColor: '#E8E1D8' },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#19C2AF' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: '#2F9F97' },
   tabText: { fontSize: 15, color: '#999' },
-  tabTextActive: { color: '#19C2AF', fontWeight: '600' },
+  tabTextActive: { color: '#2F9F97', fontWeight: '600' },
   dateSwitchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
   },
   dateCenterBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dateSwitchText: { fontSize: 18, fontWeight: '700', color: '#2D3741' },
+  dateSwitchText: { fontSize: 18, fontWeight: '700', color: '#2F2A24' },
+  ringWrap: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 4,
+    backgroundColor: '#F7F4EE',
+  },
+  ringOuter: {
+    width: 172,
+    height: 172,
+    borderRadius: 86,
+    borderWidth: 10,
+    borderColor: '#E8F1EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  ringDot: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#2F9F97',
+    top: -8,
+    left: '50%',
+    marginLeft: -8,
+  },
+  ringInner: { alignItems: 'center' },
+  ringCount: { fontSize: 46, lineHeight: 50, color: '#2F9F97', fontWeight: '300' },
+  ringPercent: { fontSize: 18, color: '#2F9F97', fontWeight: '600', marginTop: 4 },
+  ringLabel: { marginTop: 2, fontSize: 14, color: '#8A8279', fontWeight: '600' },
+  ringSubText: { marginTop: 12, fontSize: 14, color: '#867D73' },
   list: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 24 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   sectionMarker: { width: 4, height: 20, borderRadius: 999, backgroundColor: '#FF7E79', marginRight: 10 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#4B5A64' },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#534A41' },
   friendPlanCard: {
-    backgroundColor: '#EEF4F5',
+    backgroundColor: '#FFFDF8',
     borderRadius: 20,
     padding: 14,
     marginBottom: 14,
@@ -250,9 +314,9 @@ const styles = StyleSheet.create({
   progressCircleText: { fontSize: 11, fontWeight: '700', color: '#FF6B6B' },
   planProgressText: { marginTop: 8, fontSize: 12, color: '#FF6B6B', fontWeight: '600' },
   friendPlanInfo: { flex: 1, marginLeft: 10 },
-  friendPlanAuthor: { fontSize: 15, fontWeight: '700', color: '#31404A' },
+  friendPlanAuthor: { fontSize: 15, fontWeight: '700', color: '#3F3932' },
   friendPlanDate: { marginTop: 2, fontSize: 12, color: '#8A969E' },
-  friendPlanTitle: { fontSize: 16, fontWeight: '700', color: '#33414B' },
+  friendPlanTitle: { fontSize: 16, fontWeight: '700', color: '#3F3932' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 100 },
   emptyText: { color: '#bbb', fontSize: 14, marginTop: 12, textAlign: 'center' },
 });

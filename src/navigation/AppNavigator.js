@@ -90,12 +90,12 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#4ECDC4',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: '#2F9F97',
+        tabBarInactiveTintColor: '#8A8279',
         tabBarStyle: {
-          backgroundColor: '#fff',
+          backgroundColor: '#FFFDF8',
           borderTopWidth: 1,
-          borderTopColor: '#F0F0F0',
+          borderTopColor: '#E8E1D8',
           paddingBottom: 8,
           paddingTop: 6,
           height: 62,
@@ -146,9 +146,9 @@ function AuthNavigator() {
 
 function LoadingScreen() {
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F2F6F5' }}>
-      <ActivityIndicator size="large" color="#4ECDC4" />
-      <Text style={{ marginTop: 12, color: '#6A7673' }}>正在加载数据...</Text>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
+      <ActivityIndicator size="large" color="#2F9F97" />
+      <Text style={{ marginTop: 12, color: '#6E655C' }}>正在加载数据...</Text>
     </View>
   );
 }
@@ -162,10 +162,10 @@ export default function AppNavigator() {
 
   if (!isCloudEnabled) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24, backgroundColor: '#F2F6F5' }}>
-        <View style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16 }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: '#1E2A28', marginBottom: 8 }}>云端配置未完成</Text>
-          <Text style={{ fontSize: 14, color: '#5E6A67', lineHeight: 21 }}>
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24, backgroundColor: '#F7F4EE' }}>
+        <View style={{ backgroundColor: '#FFFDF8', borderRadius: 14, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: '#2F2A24', marginBottom: 8 }}>云端配置未完成</Text>
+          <Text style={{ fontSize: 14, color: '#6E655C', lineHeight: 21 }}>
             当前版本仅支持 Supabase 云端存储。请在运行环境中配置 EXPO_PUBLIC_SUPABASE_URL、EXPO_PUBLIC_SUPABASE_ANON_KEY 与 EXPO_PUBLIC_SUPABASE_MEDIA_BUCKET，然后重启应用。
           </Text>
         </View>

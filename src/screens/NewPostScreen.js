@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, Image, Alert, KeyboardAvoidingView, Platform, ActivityIndicator,
+  ScrollView, Image, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, ToastAndroid,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -146,8 +146,11 @@ export default function NewPostScreen({ navigation }) {
       Alert.alert('发布失败', result?.error || '请稍后重试');
       return;
     }
-    if (result?.async) {
-      Alert.alert('发布成功', '内容已发布，媒体正在后台上传。');
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(
+        result?.async ? '发布成功，媒体后台上传中' : '发布成功',
+        ToastAndroid.SHORT
+      );
     }
     navigation.goBack();
   };

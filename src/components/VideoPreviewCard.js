@@ -5,7 +5,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 
 export default function VideoPreviewCard({ uri, label = '视频动态', style }) {
   const [playing, setPlaying] = useState(false);
-  const [activated, setActivated] = useState(false);
+  const [activated, setActivated] = useState(true);
 
   const player = useVideoPlayer(uri, playerInstance => {
     playerInstance.loop = false;
@@ -51,7 +51,7 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style })
           surfaceType="textureView"
         />
       ) : null}
-      <View style={styles.overlay} pointerEvents="none">
+      <View style={[styles.overlay, playing && styles.overlayPlaying]} pointerEvents="none">
         <Ionicons name={playing ? 'pause-circle' : 'play-circle'} size={42} color="#fff" />
         <Text style={styles.label}>{label}</Text>
       </View>
@@ -75,7 +75,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.22)',
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
+  overlayPlaying: {
+    backgroundColor: 'rgba(0,0,0,0.04)',
   },
   label: {
     color: '#fff',

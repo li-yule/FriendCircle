@@ -117,8 +117,8 @@ export default function PostDetailScreen({ navigation, route }) {
   return (
     <KeyboardAvoidingView 
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 24}
     >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -248,25 +248,25 @@ export default function PostDetailScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  container: { flex: 1, backgroundColor: '#F7F4EE' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
-  headerTitle: { fontSize: 17, fontWeight: '600', color: '#333' },
+  headerTitle: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
   body: { padding: 14, gap: 12, paddingBottom: 16 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   authorInfo: { flex: 1 },
-  authorName: { fontSize: 15, fontWeight: '700', color: '#333' },
+  authorName: { fontSize: 15, fontWeight: '700', color: '#2F2A24' },
   timeText: { marginTop: 2, fontSize: 12, color: '#999' },
-  contentText: { fontSize: 16, color: '#333', lineHeight: 24, backgroundColor: '#fff', borderRadius: 14, padding: 14 },
+  contentText: { fontSize: 16, color: '#2F2A24', lineHeight: 24, backgroundColor: '#FFFDF8', borderRadius: 14, padding: 14 },
   mediaRow: { marginTop: 4 },
   image: { width: 180, height: 180, borderRadius: 12, marginRight: 10 },
   videoList: { gap: 10 },
@@ -288,20 +288,20 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: 'row', gap: 18, alignItems: 'center', paddingHorizontal: 4 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actionText: { color: '#666', fontSize: 13 },
-  commentTitle: { fontSize: 15, fontWeight: '700', color: '#333', marginTop: 8 },
+  commentTitle: { fontSize: 15, fontWeight: '700', color: '#2F2A24', marginTop: 8 },
   commentItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  commentBubble: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 10 },
-  commentName: { fontSize: 13, fontWeight: '700', color: '#4ECDC4' },
+  commentBubble: { flex: 1, backgroundColor: '#FFFDF8', borderRadius: 12, padding: 10 },
+  commentName: { fontSize: 13, fontWeight: '700', color: '#2F9F97' },
   replyHint: { fontSize: 11, color: '#999', marginTop: 2 },
   commentText: { fontSize: 14, color: '#444', marginTop: 2, lineHeight: 20 },
   commentTime: { fontSize: 11, color: '#bbb', marginTop: 5 },
   inputBar: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF8',
     borderTopWidth: 1,
-    borderTopColor: '#ECECEC',
+    borderTopColor: '#E8E1D8',
     paddingHorizontal: 12,
     paddingTop: 8,
-    paddingBottom: 20,
+    paddingBottom: 10,
     gap: 6,
   },
   replyTarget: {
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderRadius: 18,
-    backgroundColor: '#F6F6F6',
+    backgroundColor: '#F4EEE5',
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F7FCFB',
+    backgroundColor: '#EAF7F5',
   },
   emojiText: { fontSize: 18 },
   sendBtn: { padding: 4 },
