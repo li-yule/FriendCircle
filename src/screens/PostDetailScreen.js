@@ -156,14 +156,19 @@ export default function PostDetailScreen({ navigation, route }) {
         {(livePost.videos || []).length > 0 && (
           <View style={styles.videoList}>
             {(livePost.videos || []).map((uri, index) => (
-              <TouchableOpacity
+              <View
                 key={`${uri}_${index}`}
                 style={styles.videoWrap}
-                activeOpacity={0.9}
-                onPress={() => openMediaViewer((livePost.images || []).length + index)}
               >
                 <VideoPreviewCard uri={uri} style={styles.videoPreview} />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.expandBtn}
+                  onPress={() => openMediaViewer((livePost.images || []).length + index)}
+                >
+                  <Ionicons name="expand-outline" size={16} color="#fff" />
+                  <Text style={styles.expandBtnText}>放大查看</Text>
+                </TouchableOpacity>
+              </View>
             ))}
           </View>
         )}
@@ -267,6 +272,19 @@ const styles = StyleSheet.create({
   videoList: { gap: 10 },
   videoWrap: { position: 'relative' },
   videoPreview: { width: '100%', height: 220, borderRadius: 14 },
+  expandBtn: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  expandBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   actionRow: { flexDirection: 'row', gap: 18, alignItems: 'center', paddingHorizontal: 4 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actionText: { color: '#666', fontSize: 13 },

@@ -21,7 +21,7 @@ const initialState = {
   posts: [],
   plans: [],
   knowledge: [],
-  notifications: [],
+  notifications: {},
   loaded: false,
 };
 
@@ -121,6 +121,11 @@ function normalizeComment(comment) {
     audioFiles: ensureArray(comment?.audioFiles || comment?.audio_files).map(normalizeAudioFile),
     createdAt: comment?.createdAt || comment?.created_at || new Date().toISOString(),
   };
+}
+
+function normalizeNotifications(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value;
 }
 
 function normalizeAudioFile(file) {
@@ -257,7 +262,7 @@ function sanitizeLoadedState(parsed) {
     posts: ensureArray(parsed?.posts).map(normalizePost),
     plans: ensureArray(parsed?.plans).map(normalizePlan),
     knowledge: ensureArray(parsed?.knowledge).map(normalizeKnowledge),
-    notifications: ensureArray(parsed?.notifications),
+    notifications: normalizeNotifications(parsed?.notifications),
     loaded: true,
   };
 }
@@ -269,7 +274,7 @@ function createEmptyLoadedState() {
     posts: [],
     plans: [],
     knowledge: [],
-    notifications: [],
+    notifications: {},
     currentUser: null,
     loaded: true,
   };
@@ -301,7 +306,7 @@ function buildCloudState(snapshot, currentUserId) {
     posts: ensureArray(snapshot?.posts).map(normalizePost),
     plans: ensureArray(snapshot?.plans).map(normalizePlan),
     knowledge: ensureArray(snapshot?.knowledge).map(normalizeKnowledge),
-    notifications: [],
+    notifications: normalizeNotifications(initialState.notifications),
     loaded: true,
   };
 }
@@ -378,6 +383,22 @@ function reducer(state, action) {
 
     case 'LOGOUT':
       return { ...state, currentUser: null };
+
+    case 'MARK_NOTIFICATIONS_READ': {
+      const userId = action.payload?.userId;
+      if (!userId) return state;
+      const currentMap = normalizeNotifications(state.notifications);
+      return {
+        ...state,
+        notifications: {
+          ...currentMap,
+          [userId]: {
+            ...(currentMap[userId] || {}),
+            commentsReadAt: action.payload?.readAt || new Date().toISOString(),
+          },
+        },
+      };
+    }
 
     case 'UPDATE_PROFILE': {
       if (!state.currentUser) return state;
@@ -634,10 +655,18 @@ async function uploadAssetIfNeeded(userId, uri, folder) {
   }
 
   const extension = inferFileExtension(uri, folder.includes('audio') ? 'm4a' : 'jpg');
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: 'base64',
-  });
-  const arrayBuffer = decode(base64);
+  let arrayBuffer;
+
+  // 首选 fetch(file://).arrayBuffer，通常比 base64 路径更快、更省内存
+  try {
+    const response = await fetch(uri);
+    arrayBuffer = await response.arrayBuffer();
+  } catch {
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: 'base64',
+    });
+    arrayBuffer = decode(base64);
+  }
   const path = `${userId}/${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
 
   const { error } = await supabase.storage.from(mediaBucketName).upload(path, arrayBuffer, {
@@ -1090,6 +1119,11 @@ export function AppProvider({ children }) {
         const { error } = await supabase.auth.signOut();
         if (error) return { ok: false, error: '退出登录失败' };
         baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
+        return { ok: true };
+      }
+
+      if (action.type === 'MARK_NOTIFICATIONS_READ') {
+        baseDispatch(action);
         return { ok: true };
       }
 

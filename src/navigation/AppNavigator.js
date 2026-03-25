@@ -64,6 +64,30 @@ function ProfileStack() {
 }
 
 function MainTabs() {
+  const { state } = useApp();
+  const currentUser = state.currentUser;
+  const myPosts = (state.posts || []).filter(post => post.userId === currentUser?.id);
+  const myKnowledge = (state.knowledge || []).filter(item => item.userId === currentUser?.id);
+  const lastCommentsReadAt = state.notifications?.[currentUser?.id]?.commentsReadAt || '';
+
+  const isUnreadComment = (createdAt) => {
+    if (!createdAt) return false;
+    if (!lastCommentsReadAt) return true;
+    return new Date(createdAt).getTime() > new Date(lastCommentsReadAt).getTime();
+  };
+
+  const unreadInteractions = myPosts.reduce((sum, post) => {
+    const next = (post.comments || [])
+      .filter(comment => comment.userId !== currentUser?.id)
+      .filter(comment => isUnreadComment(comment.createdAt)).length;
+    return sum + next;
+  }, 0) + myKnowledge.reduce((sum, item) => {
+    const next = (item.comments || [])
+      .filter(comment => comment.userId !== currentUser?.id)
+      .filter(comment => isUnreadComment(comment.createdAt)).length;
+    return sum + next;
+  }, 0);
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -93,7 +117,22 @@ function MainTabs() {
       <Tab.Screen name="FeedTab" component={FeedStack} options={{ tabBarLabel: '动态' }} />
       <Tab.Screen name="PlanTab" component={PlanStack} options={{ tabBarLabel: '打卡' }} />
       <Tab.Screen name="KnowledgeTab" component={KnowledgeStack} options={{ tabBarLabel: '知识' }} />
-      <Tab.Screen name="ProfileTab" component={ProfileStack} options={{ tabBarLabel: '个人中心' }} />
+      <Tab.Screen
+        name="ProfileTab"
+        component={ProfileStack}
+        options={{
+          tabBarLabel: '个人中心',
+          tabBarBadge: unreadInteractions > 0 ? (unreadInteractions > 99 ? '99+' : unreadInteractions) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#FF6B6B',
+            color: '#fff',
+            fontSize: 10,
+            minWidth: 16,
+            height: 16,
+            lineHeight: 16,
+          },
+        }}
+      />
     </Tab.Navigator>
   );
 }

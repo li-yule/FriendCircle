@@ -17,22 +17,33 @@ export default function ProfileScreen({ navigation }) {
   const [showInteractions, setShowInteractions] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name || '');
   const [bioInput, setBioInput] = useState(currentUser.bio || '');
+  const lastCommentsReadAt = state.notifications?.[currentUser.id]?.commentsReadAt || '';
+
+  const isUnreadComment = (createdAt) => {
+    if (!createdAt) return false;
+    if (!lastCommentsReadAt) return true;
+    return new Date(createdAt).getTime() > new Date(lastCommentsReadAt).getTime();
+  };
 
   const myPosts = posts.filter(p => p.userId === currentUser.id);
   const myPlans = plans.filter(p => p.userId === currentUser.id);
   const incomingCommentCount = useMemo(() => {
     const postComments = myPosts.reduce((sum, post) => {
-      const next = (post.comments || []).filter(comment => comment.userId !== currentUser.id).length;
+      const next = (post.comments || [])
+        .filter(comment => comment.userId !== currentUser.id)
+        .filter(comment => isUnreadComment(comment.createdAt)).length;
       return sum + next;
     }, 0);
     const knowledgeComments = (knowledge || [])
       .filter(item => item.userId === currentUser.id)
       .reduce((sum, item) => {
-        const next = (item.comments || []).filter(comment => comment.userId !== currentUser.id).length;
+        const next = (item.comments || [])
+          .filter(comment => comment.userId !== currentUser.id)
+          .filter(comment => isUnreadComment(comment.createdAt)).length;
         return sum + next;
       }, 0);
     return postComments + knowledgeComments;
-  }, [currentUser.id, knowledge, myPosts]);
+  }, [currentUser.id, knowledge, myPosts, lastCommentsReadAt]);
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
       (post.comments || [])
@@ -201,12 +212,18 @@ export default function ProfileScreen({ navigation }) {
     const done = item.done;
     const total = item.total;
     const percent = total > 0 ? (done / total) * 100 : 0;
+    const percentText = `${Math.round(percent)}%`;
 
     return (
       <View key={item.dateText} style={styles.planItem}>
         <View style={styles.planItemHeader}>
           <Text style={styles.planItemTitle}>{item.dateText}</Text>
-          <Text style={styles.planItemDate}>每日进度</Text>
+          <View style={styles.planHeaderRight}>
+            <Text style={styles.planItemDate}>每日进度</Text>
+            <View style={styles.progressCircle}>
+              <Text style={styles.progressCircleText}>{percentText}</Text>
+            </View>
+          </View>
         </View>
         <View style={styles.planProgress}>
           <View style={styles.progressBar}>
@@ -229,12 +246,22 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const handleToggleInteractions = async () => {
+    const nextVisible = !showInteractions;
+    setShowInteractions(nextVisible);
+    if (!nextVisible) return;
+    await dispatch({
+      type: 'MARK_NOTIFICATIONS_READ',
+      payload: { userId: currentUser.id, readAt: new Date().toISOString() },
+    });
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* 个人信息卡片 */}
       <View style={styles.profileCard}>
         <View style={styles.profileCardTopRight}>
-          <TouchableOpacity style={styles.msgIconBtn} onPress={() => setShowInteractions(prev => !prev)}>
+          <TouchableOpacity style={styles.msgIconBtn} onPress={handleToggleInteractions}>
             <Ionicons name="notifications-outline" size={18} color="#5B6763" />
             {incomingCommentCount > 0 && (
               <View style={styles.msgBadge}>
@@ -537,6 +564,21 @@ const styles = StyleSheet.create({
   planItemTitle: { fontSize: 15, fontWeight: '600', color: '#333' },
   planItemDate: { fontSize: 12, color: '#999' },
   planProgress: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: '#FF6B6B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF5F5',
+  },
+  progressCircleText: {
+    fontSize: 11,
+    color: '#FF6B6B',
+    fontWeight: '700',
+  },
   progressBar: { flex: 1, height: 5, backgroundColor: '#F0F0F0', borderRadius: 3 },
   progressFill: { height: 5, backgroundColor: '#FF6B6B', borderRadius: 3 },
   progressLabel: { fontSize: 12, color: '#FF6B6B' },

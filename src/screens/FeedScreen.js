@@ -146,11 +146,9 @@ export default function FeedScreen({ navigation }) {
         {item.videos && item.videos.length > 0 && (
           <View style={styles.videoList}>
             {item.videos.map((uri, idx) => (
-              <TouchableOpacity
+              <View
                 key={`${uri}_${idx}`}
                 style={styles.videoCard}
-                activeOpacity={0.9}
-                onPress={() => openPostMediaViewer(item, (item.images || []).length + idx)}
               >
                 <VideoPreviewCard uri={uri} style={styles.postVideoPlaceholder} />
                 <TouchableOpacity
@@ -160,7 +158,7 @@ export default function FeedScreen({ navigation }) {
                   <Ionicons name="expand-outline" size={16} color="#fff" />
                   <Text style={styles.expandBtnText}>放大查看</Text>
                 </TouchableOpacity>
-              </TouchableOpacity>
+              </View>
             ))}
           </View>
         )}
