@@ -99,9 +99,6 @@ export default function PlanScreen({ navigation }) {
         <View style={styles.minePlanHeader}>
           <Text style={styles.minePlanDate}>{formatDate(plan.date)}</Text>
           <View style={styles.minePlanHeaderRight}>
-            <View style={styles.progressCircle}>
-              <Text style={styles.progressCircleText}>{percent}%</Text>
-            </View>
             <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
               <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
             </TouchableOpacity>
@@ -234,7 +231,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: 'bold', color: '#2F2A24' },
   addBtn: {
-    backgroundColor: '#2F9F97',
+    backgroundColor: '#C49A4B',
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -243,9 +240,9 @@ const styles = StyleSheet.create({
   },
   tabs: { flexDirection: 'row', backgroundColor: '#FFFDF8', borderBottomWidth: 1, borderBottomColor: '#E8E1D8' },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#2F9F97' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: '#C49A4B' },
   tabText: { fontSize: 15, color: '#999' },
-  tabTextActive: { color: '#2F9F97', fontWeight: '600' },
+  tabTextActive: { color: '#C49A4B', fontWeight: '600' },
   dateSwitchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -267,7 +264,7 @@ const styles = StyleSheet.create({
     height: 172,
     borderRadius: 86,
     borderWidth: 10,
-    borderColor: '#E8F1EE',
+    borderColor: '#EFE7D6',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -277,14 +274,14 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#2F9F97',
+    backgroundColor: '#C49A4B',
     top: -8,
     left: '50%',
     marginLeft: -8,
   },
   ringInner: { alignItems: 'center' },
-  ringCount: { fontSize: 46, lineHeight: 50, color: '#2F9F97', fontWeight: '300' },
-  ringPercent: { fontSize: 18, color: '#2F9F97', fontWeight: '600', marginTop: 4 },
+  ringCount: { fontSize: 46, lineHeight: 50, color: '#C49A4B', fontWeight: '300' },
+  ringPercent: { fontSize: 18, color: '#C49A4B', fontWeight: '600', marginTop: 4 },
   ringLabel: { marginTop: 2, fontSize: 14, color: '#8A8279', fontWeight: '600' },
   ringSubText: { marginTop: 12, fontSize: 14, color: '#867D73' },
   list: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 24 },
@@ -301,18 +298,7 @@ const styles = StyleSheet.create({
   minePlanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   minePlanHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   minePlanDate: { fontSize: 12, color: '#8A969E' },
-  progressCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: '#FF6B6B',
-    backgroundColor: '#FFF5F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressCircleText: { fontSize: 11, fontWeight: '700', color: '#FF6B6B' },
-  planProgressText: { marginTop: 8, fontSize: 12, color: '#FF6B6B', fontWeight: '600' },
+  planProgressText: { marginTop: 8, fontSize: 12, color: '#C49A4B', fontWeight: '600' },
   friendPlanInfo: { flex: 1, marginLeft: 10 },
   friendPlanAuthor: { fontSize: 15, fontWeight: '700', color: '#3F3932' },
   friendPlanDate: { marginTop: 2, fontSize: 12, color: '#8A969E' },

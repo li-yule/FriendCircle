@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import VideoPreviewCard from '../components/VideoPreviewCard';
+import { ReliableImage } from '../components/ReliableImage';
 import { formatTime, formatDate } from '../utils/helpers';
 
 export default function ProfileScreen({ navigation }) {
@@ -168,7 +169,7 @@ export default function ProfileScreen({ navigation }) {
         onPress={() => openPostMediaViewer(item)}
       >
         {hasImages ? (
-          <Image source={{ uri: item.images[0] }} style={styles.miniImg} />
+          <ReliableImage uri={item.images[0]} style={styles.miniImg} />
         ) : hasVideos ? (
           <View style={styles.videoThumbWrap}>
             <VideoPreviewCard uri={item.videos[0]} label="视频" style={[styles.miniImg, styles.videoThumbPlaceholder]} />
@@ -472,9 +473,9 @@ const styles = StyleSheet.create({
   editBioInput: { minHeight: 44 },
   accountRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   accountActions: { flexDirection: 'row', gap: 8 },
-  accountTag: { fontSize: 12, color: '#2F9F97', fontWeight: '700' },
-  accountBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#E9F7F5' },
-  accountBtnText: { color: '#2F9F97', fontWeight: '600', fontSize: 12 },
+  accountTag: { fontSize: 12, color: '#C49A4B', fontWeight: '700' },
+  accountBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#F6EEDC' },
+  accountBtnText: { color: '#8A7242', fontWeight: '600', fontSize: 12 },
   logoutBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#FFEAEA' },
   logoutBtnText: { color: '#FF6B6B', fontWeight: '600', fontSize: 12 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderTopColor: '#F5F5F5', paddingTop: 16 },
@@ -528,9 +529,9 @@ const styles = StyleSheet.create({
   tipText: { color: '#999', fontSize: 13 },
   tabs: { flexDirection: 'row', backgroundColor: '#FFFDF8', borderBottomWidth: 1, borderBottomColor: '#E8E1D8', marginBottom: 12 },
   tab: { flex: 1, flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center', paddingVertical: 12 },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#2F9F97' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: '#C49A4B' },
   tabText: { fontSize: 13, color: '#999' },
-  tabTextActive: { color: '#2F9F97', fontWeight: '600' },
+  tabTextActive: { color: '#C49A4B', fontWeight: '600' },
   postsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 8 },
   miniCard: { width: '30%', minHeight: 190 },
   miniImg: { width: '100%', aspectRatio: 1, borderRadius: 10 },
@@ -547,35 +548,35 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.18)',
     borderRadius: 10,
   },
-  thumbText: { fontSize: 11, color: '#2F9F97', lineHeight: 16 },
-  mediaBadge: { fontSize: 10, color: '#2F9F97', marginTop: 6, fontWeight: '700', minHeight: 14 },
+  thumbText: { fontSize: 11, color: '#8A7242', lineHeight: 16 },
+  mediaBadge: { fontSize: 10, color: '#8A7242', marginTop: 6, fontWeight: '700', minHeight: 14 },
   miniCaption: { fontSize: 11, color: '#6F655D', lineHeight: 15, marginTop: 2, minHeight: 32 },
   miniTime: { fontSize: 10, color: '#A79C90', marginTop: 'auto', textAlign: 'left', paddingTop: 4 },
   planList: { paddingHorizontal: 12, gap: 10 },
-  planItem: { backgroundColor: '#FFFDF8', borderRadius: 14, padding: 14 },
+  planItem: { backgroundColor: '#FFFDF8', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#EFE7D6' },
   planItemHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   planHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   planItemTitle: { fontSize: 15, fontWeight: '600', color: '#333' },
-  planItemDate: { fontSize: 12, color: '#999' },
+  planItemDate: { fontSize: 12, color: '#8A8279' },
   planProgress: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   progressCircle: {
     width: 38,
     height: 38,
     borderRadius: 19,
     borderWidth: 2,
-    borderColor: '#FF6B6B',
+    borderColor: '#C49A4B',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF5F5',
+    backgroundColor: '#F6EEDC',
   },
   progressCircleText: {
     fontSize: 11,
-    color: '#FF6B6B',
+    color: '#8A7242',
     fontWeight: '700',
   },
-  progressBar: { flex: 1, height: 5, backgroundColor: '#F0F0F0', borderRadius: 3 },
-  progressFill: { height: 5, backgroundColor: '#FF6B6B', borderRadius: 3 },
-  progressLabel: { fontSize: 12, color: '#FF6B6B' },
+  progressBar: { flex: 1, height: 5, backgroundColor: '#EFE7D6', borderRadius: 3 },
+  progressFill: { height: 5, backgroundColor: '#C49A4B', borderRadius: 3 },
+  progressLabel: { fontSize: 12, color: '#8A7242' },
   friendList: { paddingHorizontal: 12, gap: 8 },
   friendItem: {
     flexDirection: 'row',

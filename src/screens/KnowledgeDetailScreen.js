@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, Image, Linking, KeyboardAvoidingView, Platform,
+  TextInput, Alert, Linking, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -10,6 +10,7 @@ import { Audio } from 'expo-av';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import { formatTime, generateId } from '../utils/helpers';
+import { ReliableImage } from '../components/ReliableImage';
 
 const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😍', '🥰', '😘', '😋', '😎', '🤩', '🥹', '😭', '😅', '😤', '😴', '🤔', '🫡', '🙌', '👏', '👍', '👎', '👌', '💪', '🙏', '🎉', '✨', '🔥', '🌟', '❤️', '💛', '💙', '🍀', '🌈', '📚', '🧠', '✍️', '✅', '💯'];
 
@@ -267,7 +268,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
               <Ionicons name="swap-horizontal-outline" size={18} color="#666" />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => navigation.navigate('NewKnowledge', { item: liveItem })}>
-              <Ionicons name="create-outline" size={22} color="#2F9F97" />
+              <Ionicons name="create-outline" size={22} color="#C49A4B" />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleDelete} style={{ marginLeft: 12 }}>
               <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
@@ -284,7 +285,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             disabled={!prevKnowledge}
             onPress={() => navigation.replace('KnowledgeDetail', { item: prevKnowledge })}
           >
-            <Ionicons name="chevron-back" size={16} color={prevKnowledge ? '#2F9F97' : '#BBB'} />
+            <Ionicons name="chevron-back" size={16} color={prevKnowledge ? '#C49A4B' : '#BBB'} />
             <Text style={[styles.switchBtnText, !prevKnowledge && styles.switchBtnTextDisabled]}>上一题</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -293,7 +294,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             onPress={() => navigation.replace('KnowledgeDetail', { item: nextKnowledge })}
           >
             <Text style={[styles.switchBtnText, !nextKnowledge && styles.switchBtnTextDisabled]}>下一题</Text>
-            <Ionicons name="chevron-forward" size={16} color={nextKnowledge ? '#2F9F97' : '#BBB'} />
+            <Ionicons name="chevron-forward" size={16} color={nextKnowledge ? '#C49A4B' : '#BBB'} />
           </TouchableOpacity>
         </View>
 
@@ -322,7 +323,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
               <View style={styles.imageRow}>
                 {liveItem.questionImages.map((uri, index) => (
                   <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openImageViewer(uri)}>
-                    <Image source={{ uri }} style={styles.imageItem} />
+                    <ReliableImage uri={uri} style={styles.imageItem} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -340,7 +341,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                 <View style={styles.imageRow}>
                   {liveItem.wrongAnswerImages.map((uri, index) => (
                     <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openImageViewer(uri)}>
-                      <Image source={{ uri }} style={styles.imageItem} />
+                      <ReliableImage uri={uri} style={styles.imageItem} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -359,7 +360,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                 <View style={styles.imageRow}>
                   {liveItem.correctAnswerImages.map((uri, index) => (
                     <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openImageViewer(uri)}>
-                      <Image source={{ uri }} style={styles.imageItem} />
+                      <ReliableImage uri={uri} style={styles.imageItem} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -378,7 +379,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                 <View style={styles.imageRow}>
                   {liveItem.summaryImages.map((uri, index) => (
                     <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openImageViewer(uri)}>
-                      <Image source={{ uri }} style={styles.imageItem} />
+                      <ReliableImage uri={uri} style={styles.imageItem} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -407,7 +408,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
               <View style={styles.imageRow}>
                 {liveItem.images.map((uri, index) => (
                   <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openImageViewer(uri)}>
-                    <Image source={{ uri }} style={styles.imageItem} />
+                    <ReliableImage uri={uri} style={styles.imageItem} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -467,7 +468,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                     <View style={styles.commentMediaRow}>
                       {c.images.map((uri, index) => (
                         <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openCommentImageViewer(uri)}>
-                          <Image source={{ uri }} style={styles.commentImage} />
+                          <ReliableImage uri={uri} style={styles.commentImage} />
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -518,16 +519,16 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
           />
           <View style={styles.commentToolbar}>
             <TouchableOpacity onPress={() => setShowEmojiPicker(prev => !prev)}>
-              <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={20} color="#2F9F97" />
+              <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={20} color="#C49A4B" />
             </TouchableOpacity>
             <TouchableOpacity onPress={pickCommentImages}>
-              <Ionicons name="image-outline" size={20} color="#2F9F97" />
+              <Ionicons name="image-outline" size={20} color="#C49A4B" />
             </TouchableOpacity>
             <TouchableOpacity onPress={isRecording ? stopRecording : startRecording}>
-              <Ionicons name="mic-outline" size={20} color={isRecording ? '#FF6B6B' : '#2F9F97'} />
+              <Ionicons name="mic-outline" size={20} color={isRecording ? '#FF6B6B' : '#C49A4B'} />
             </TouchableOpacity>
             <TouchableOpacity onPress={importCommentAudio}>
-              <Ionicons name="folder-open-outline" size={20} color="#2F9F97" />
+              <Ionicons name="folder-open-outline" size={20} color="#C49A4B" />
             </TouchableOpacity>
           </View>
           {showEmojiPicker && (
@@ -544,7 +545,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
               <View style={styles.commentMediaRow}>
                 {commentImages.map((uri, index) => (
                   <View key={`${uri}_${index}`} style={styles.commentMediaPreviewWrap}>
-                    <Image source={{ uri }} style={styles.commentImage} />
+                    <ReliableImage uri={uri} style={styles.commentImage} />
                     <TouchableOpacity style={styles.removeMediaBtn} onPress={() => setCommentImages(prev => prev.filter((_, i) => i !== index))}>
                       <Ionicons name="close" size={12} color="#fff" />
                     </TouchableOpacity>
@@ -557,7 +558,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             <View style={styles.audioList}>
               {commentAudioFiles.map((file, index) => (
                 <View key={`${file.uri}_${index}`} style={styles.audioItem}>
-                  <Ionicons name="mic-outline" size={16} color="#2F9F97" />
+                  <Ionicons name="mic-outline" size={16} color="#C49A4B" />
                   <Text style={styles.audioName} numberOfLines={1}>{file.name || '语音文件'}</Text>
                   <TouchableOpacity onPress={() => setCommentAudioFiles(prev => prev.filter((_, i) => i !== index))}>
                     <Ionicons name="close-circle" size={18} color="#FF6B6B" />
@@ -568,7 +569,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
           )}
         </View>
         <TouchableOpacity onPress={handleComment}>
-          <Ionicons name="send" size={20} color="#2F9F97" />
+          <Ionicons name="send" size={20} color="#C49A4B" />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -592,10 +593,10 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   headerTypeBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  headerTypeBadgeKnowledge: { backgroundColor: '#EAF7F5' },
+  headerTypeBadgeKnowledge: { backgroundColor: '#F5E7C8' },
   headerTypeBadgeError: { backgroundColor: '#FF6B6B22' },
   headerTypeBadgeText: { fontSize: 11, fontWeight: '600' },
-  headerTypeTextKnowledge: { color: '#2F9F97' },
+  headerTypeTextKnowledge: { color: '#8F6A2E' },
   headerTypeTextError: { color: '#FF6B6B' },
   typeSwitchBtn: { marginRight: 10, padding: 2 },
   body: { padding: 16, gap: 16, paddingBottom: 80 },
@@ -609,9 +610,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     borderWidth: 1,
-    borderColor: '#DCEFEA',
+    borderColor: '#E8D8BB',
     borderRadius: 14,
-    backgroundColor: '#EAF7F5',
+    backgroundColor: '#F7EBD3',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -619,11 +620,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2EEE6',
     borderColor: '#E6E6E6',
   },
-  switchBtnText: { color: '#2F9F97', fontSize: 13, fontWeight: '600' },
+  switchBtnText: { color: '#8F6A2E', fontSize: 13, fontWeight: '600' },
   switchBtnTextDisabled: { color: '#BBB' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  subjectBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: '#EAF7F5' },
-  subjectText: { fontWeight: '600', fontSize: 13, color: '#2F9F97' },
+  subjectBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: '#F5E7C8' },
+  subjectText: { fontWeight: '600', fontSize: 13, color: '#8F6A2E' },
   authorInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'flex-end' },
   authorName: { fontSize: 13, color: '#6F655D' },
   timeText: { fontSize: 12, color: '#A79C90' },
@@ -635,7 +636,7 @@ const styles = StyleSheet.create({
     borderColor: '#E8E1D8',
   },
   wrongSection: { backgroundColor: '#FFF4F4' },
-  correctSection: { backgroundColor: '#F0FBF8' },
+  correctSection: { backgroundColor: '#FDF6E8' },
   summarySection: { backgroundColor: '#F2EEE6' },
   sectionLabel: { fontSize: 13, fontWeight: '600', color: '#8A8279', marginBottom: 8 },
   questionText: { fontSize: 15, color: '#2F2A24', lineHeight: 24 },
@@ -664,7 +665,7 @@ const styles = StyleSheet.create({
   commentTitle: { fontSize: 15, fontWeight: '600', color: '#2F2A24' },
   commentItem: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   commentBubble: { flex: 1, backgroundColor: '#FFFDF8', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E8E1D8' },
-  commentName: { fontSize: 13, fontWeight: '600', color: '#2F9F97', marginBottom: 4 },
+  commentName: { fontSize: 13, fontWeight: '600', color: '#8F6A2E', marginBottom: 4 },
   replyHint: { fontSize: 11, color: '#999', marginBottom: 3 },
   commentTextContent: { fontSize: 14, color: '#444', lineHeight: 20 },
   commentTime: { fontSize: 11, color: '#bbb', marginTop: 4 },
@@ -718,7 +719,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EAF7F5',
+    backgroundColor: '#F5E7C8',
   },
   emojiText: { fontSize: 18 },
   commentMediaScroll: {

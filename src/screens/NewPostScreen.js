@@ -19,6 +19,7 @@ export default function NewPostScreen({ navigation }) {
   const [text, setText] = useState('');
   const [images, setImages] = useState([]);
   const [videos, setVideos] = useState([]);
+  const [videoMeta, setVideoMeta] = useState({});
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -66,7 +67,7 @@ export default function NewPostScreen({ navigation }) {
       quality: 0.6,
     });
     if (!result.canceled) {
-      const picked = (result.assets || []).filter(asset => {
+      const validAssets = (result.assets || []).filter(asset => {
         if (asset?.fileSize && asset.fileSize > MAX_VIDEO_SIZE_BYTES) {
           Alert.alert('视频过大', '请将视频控制在 20MB 以内');
           return false;
@@ -76,8 +77,19 @@ export default function NewPostScreen({ navigation }) {
           return false;
         }
         return Boolean(asset?.uri);
-      }).map(asset => asset.uri);
+      });
+
+      const picked = validAssets.map(asset => asset.uri);
       setVideos(prev => [...prev, ...picked].slice(0, 3));
+      setVideoMeta(prev => {
+        const next = { ...prev };
+        validAssets.forEach(asset => {
+          const name = asset.fileName || String(asset.uri).split('/').pop() || '视频文件';
+          const sizeMB = asset.fileSize ? `${(asset.fileSize / 1024 / 1024).toFixed(1)}MB` : '';
+          next[asset.uri] = sizeMB ? `${name} · ${sizeMB}` : name;
+        });
+        return next;
+      });
     }
   };
 
@@ -105,6 +117,14 @@ export default function NewPostScreen({ navigation }) {
       const uri = asset?.uri;
       if (!uri) return;
       setVideos(prev => [...prev, uri].slice(0, 3));
+      setVideoMeta(prev => {
+        const name = asset.fileName || String(uri).split('/').pop() || '视频文件';
+        const sizeMB = asset.fileSize ? `${(asset.fileSize / 1024 / 1024).toFixed(1)}MB` : '';
+        return {
+          ...prev,
+          [uri]: sizeMB ? `${name} · ${sizeMB}` : name,
+        };
+      });
     }
   };
 
@@ -113,7 +133,16 @@ export default function NewPostScreen({ navigation }) {
   };
 
   const removeVideo = (idx) => {
-    setVideos(prev => prev.filter((_, i) => i !== idx));
+    setVideos(prev => {
+      const target = prev[idx];
+      setVideoMeta(metaPrev => {
+        if (!target) return metaPrev;
+        const next = { ...metaPrev };
+        delete next[target];
+        return next;
+      });
+      return prev.filter((_, i) => i !== idx);
+    });
   };
 
   const handleSubmit = async () => {
@@ -224,6 +253,7 @@ export default function NewPostScreen({ navigation }) {
                 <View style={styles.previewVideoPlaceholder}>
                   <Ionicons name="videocam" size={28} color="#C49A4B" />
                   <Text style={styles.previewVideoText}>已选择视频 {idx + 1}</Text>
+                  <Text style={styles.previewVideoMeta} numberOfLines={1}>{videoMeta[uri] || '视频文件'}</Text>
                 </View>
                 <TouchableOpacity style={styles.removeBtn} onPress={() => removeVideo(idx)}>
                   <Ionicons name="close-circle" size={22} color="#fff" />
@@ -236,19 +266,19 @@ export default function NewPostScreen({ navigation }) {
         {/* 媒体按钮 */}
         <View style={styles.mediaButtons}>
           <TouchableOpacity style={styles.mediaBtn} onPress={pickImage} disabled={isSubmitting}>
-            <Ionicons name="image-outline" size={24} color="#2F9F97" />
+            <Ionicons name="image-outline" size={24} color="#37A9A2" />
             <Text style={styles.mediaBtnText}>相册</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.mediaBtn} onPress={takePhoto} disabled={isSubmitting}>
-            <Ionicons name="camera-outline" size={24} color="#2F9F97" />
+            <Ionicons name="camera-outline" size={24} color="#37A9A2" />
             <Text style={styles.mediaBtnText}>拍照</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.mediaBtn} onPress={pickVideo} disabled={isSubmitting}>
-            <Ionicons name="videocam-outline" size={24} color="#2F9F97" />
+            <Ionicons name="videocam-outline" size={24} color="#37A9A2" />
             <Text style={styles.mediaBtnText}>视频</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.mediaBtn} onPress={recordVideo} disabled={isSubmitting}>
-            <Ionicons name="film-outline" size={24} color="#2F9F97" />
+            <Ionicons name="film-outline" size={24} color="#37A9A2" />
             <Text style={styles.mediaBtnText}>录像</Text>
           </TouchableOpacity>
         </View>
@@ -340,6 +370,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   previewVideoText: { color: '#8A7242', fontSize: 13, fontWeight: '600' },
+  previewVideoMeta: { color: '#9B8660', fontSize: 11, marginTop: 2, maxWidth: '85%' },
   removeBtn: {
     position: 'absolute',
     top: -8,
@@ -347,8 +378,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 11,
   },
-  mediaButtons: { flexDirection: 'row', gap: 20, marginTop: 8 },
-  mediaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F6EEDC', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8 },
+  mediaButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 },
+  mediaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F6EEDC', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8, minWidth: 96 },
   mediaBtnText: { color: '#8A7242', fontSize: 14 },
   uploadingNotice: {
     flexDirection: 'row',

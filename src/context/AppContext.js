@@ -18,6 +18,10 @@ const LOCAL_MUTATION_MUTE_MS = 2500;
 const AUTH_CACHE_KEY = 'friendcircle_auth_cache_v1';
 const NOTIFICATIONS_CACHE_KEY = 'friendcircle_notifications_cache_v1';
 
+function getNotificationUserCacheKey(userId) {
+  return `friendcircle_notifications_cache_${userId}`;
+}
+
 const initialState = {
   currentUser: null,
   users: INITIAL_USERS,
@@ -980,7 +984,12 @@ export function AppProvider({ children }) {
       const snapshot = await fetchCloudState(userId);
       if (!active) return;
       cloudUserIdRef.current = userId;
-      snapshot.notifications = normalizeNotifications(cachedNotifications);
+      const userNotificationsRaw = await AsyncStorage.getItem(getNotificationUserCacheKey(userId));
+      const userNotifications = userNotificationsRaw ? JSON.parse(userNotificationsRaw) : null;
+      snapshot.notifications = {
+        ...normalizeNotifications(cachedNotifications),
+        ...(userNotifications ? { [userId]: userNotifications } : {}),
+      };
       baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
     };
 
@@ -1244,12 +1253,48 @@ export function AppProvider({ children }) {
       }
 
       if (action.type === 'MARK_NOTIFICATIONS_READ') {
+        const userId = action.payload?.userId;
+        const currentMap = normalizeNotifications(stateRef.current.notifications);
+        const nextMap = {
+          ...currentMap,
+          [userId]: {
+            ...(currentMap[userId] || {}),
+            commentsReadAt: action.payload?.readAt || new Date().toISOString(),
+          },
+        };
+
         baseDispatch(action);
+        await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
+        if (userId) {
+          await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
+        }
         return { ok: true };
       }
 
       if (action.type === 'MARK_INTERACTION_READ') {
+        const userId = action.payload?.userId;
+        const interactionKey = String(action.payload?.interactionKey || '').trim();
+        const currentMap = normalizeNotifications(stateRef.current.notifications);
+        const currentUserNotification = currentMap[userId] || {};
+        const currentReadIds = Array.isArray(currentUserNotification.readInteractionIds)
+          ? currentUserNotification.readInteractionIds
+          : [];
+        const nextReadIds = currentReadIds.includes(interactionKey)
+          ? currentReadIds
+          : [...currentReadIds, interactionKey];
+        const nextMap = {
+          ...currentMap,
+          [userId]: {
+            ...currentUserNotification,
+            readInteractionIds: nextReadIds,
+          },
+        };
+
         baseDispatch(action);
+        await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
+        if (userId) {
+          await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
+        }
         return { ok: true };
       }
 

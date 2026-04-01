@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import VideoPreviewCard from '../components/VideoPreviewCard';
+import { ReliableImage } from '../components/ReliableImage';
 import { formatDateKey, generateId, formatTime, toDateKey } from '../utils/helpers';
 import DatePickerSheet from '../components/DatePickerSheet';
 
@@ -70,11 +71,11 @@ export default function FeedScreen({ navigation }) {
     dispatch({ type: 'LIKE_POST', payload: { postId, userId: currentUser.id } });
   };
 
-  const handleAddComment = (postId) => {
+  const handleAddComment = async (postId) => {
     const text = commentInput[postId]?.trim();
     if (!text) return;
     const replyTo = replyTarget[postId] || null;
-    dispatch({
+    const result = await dispatch({
       type: 'ADD_COMMENT',
       payload: {
         postId,
@@ -88,8 +89,11 @@ export default function FeedScreen({ navigation }) {
         },
       },
     });
+    if (!result?.ok) return;
     setCommentInput(prev => ({ ...prev, [postId]: '' }));
     setReplyTarget(prev => ({ ...prev, [postId]: null }));
+    setShowEmojiPicker(prev => ({ ...prev, [postId]: false }));
+    setExpandedComments(prev => ({ ...prev, [postId]: false }));
   };
 
   const openPostDetail = (postId) => {
@@ -141,7 +145,7 @@ export default function FeedScreen({ navigation }) {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaRow}>
             {item.images.map((uri, idx) => (
               <TouchableOpacity key={idx} activeOpacity={0.9} onPress={() => openPostMediaViewer(item, idx)}>
-                <Image source={{ uri }} style={styles.postImage} />
+                <ReliableImage uri={uri} style={styles.postImage} />
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -223,7 +227,7 @@ export default function FeedScreen({ navigation }) {
             <View style={styles.commentInputRow}>
               <Avatar user={currentUser} size={28} />
               <TouchableOpacity onPress={() => setShowEmojiPicker(prev => ({ ...prev, [item.id]: !prev[item.id] }))}>
-                <Ionicons name={showEmojiPicker[item.id] ? 'happy' : 'happy-outline'} size={18} color="#4ECDC4" />
+                <Ionicons name={showEmojiPicker[item.id] ? 'happy' : 'happy-outline'} size={18} color="#C49A4B" />
               </TouchableOpacity>
               <TextInput
                 style={styles.commentInput}
@@ -235,7 +239,7 @@ export default function FeedScreen({ navigation }) {
                 maxLength={300}
               />
               <TouchableOpacity onPress={() => handleAddComment(item.id)}>
-                <Ionicons name="send" size={18} color="#4ECDC4" />
+                <Ionicons name="send" size={18} color="#C49A4B" />
               </TouchableOpacity>
             </View>
             {showEmojiPicker[item.id] && (

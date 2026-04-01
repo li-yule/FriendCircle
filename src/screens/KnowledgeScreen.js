@@ -6,10 +6,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
+import { ReliableImage } from '../components/ReliableImage';
 import { DEFAULT_SUBJECTS } from '../data/initialData';
 import { formatTime } from '../utils/helpers';
 
 const SUBJECT_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3', '#F38181', '#87CEEB', '#D4A5A5'];
+const GOLD = '#C49A4B';
 
 function getSubjectColor(subject) {
   if (!subject) return '#999';
@@ -125,7 +127,7 @@ export default function KnowledgeScreen({ navigation }) {
 
           {item.questionImages?.length > 0 && (
             <View style={styles.questionImagePreviewWrap}>
-              <Image source={{ uri: item.questionImages[0] }} style={styles.questionImagePreview} />
+              <ReliableImage uri={item.questionImages[0]} style={styles.questionImagePreview} />
               {item.questionImages.length > 1 && (
                 <View style={styles.questionImageCountBadge}>
                   <Text style={styles.questionImageCountText}>+{item.questionImages.length - 1}</Text>
@@ -245,7 +247,7 @@ export default function KnowledgeScreen({ navigation }) {
         {availableSubjects.filter(s => s !== 'all').map(s => (
           <View
             key={s}
-            style={[styles.subjectChip, selectedSubject === s && { backgroundColor: getSubjectColor(s) }]}
+            style={[styles.subjectChip, selectedSubject === s && { backgroundColor: GOLD }]}
           >
             <TouchableOpacity onPress={() => setSelectedSubject(s)} style={styles.subjectChipPress} activeOpacity={0.8}>
               <Text style={[
@@ -286,26 +288,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     backgroundColor: '#FFFDF8',
     paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 12,
+    paddingTop: 42,
+    paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#E8E1D8',
   },
   typeButton: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 18,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#EFE8DE',
   },
-  typeButtonActive: { backgroundColor: '#C49A4B' },
-  typeButtonText: { fontSize: 14, fontWeight: '600', color: '#999' },
+  typeButtonActive: { backgroundColor: GOLD },
+  typeButtonText: { fontSize: 14, fontWeight: '600', color: '#8A8279' },
   typeButtonTextActive: { color: '#fff' },
   title: { fontSize: 20, fontWeight: 'bold', color: '#333' },
   addBtn: {
-    backgroundColor: '#C49A4B',
+    backgroundColor: GOLD,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -329,7 +331,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   searchInput: { flex: 1, fontSize: 14, color: '#333' },
-  subjectScroll: { marginBottom: 14, marginTop: 2, minHeight: 58 },
+  subjectScroll: { marginBottom: 10, marginTop: 2, minHeight: 52 },
   subjectList: { paddingHorizontal: 12, paddingVertical: 8, gap: 10, alignItems: 'center' },
   subjectChip: {
     flexDirection: 'row',

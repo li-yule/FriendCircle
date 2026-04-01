@@ -303,12 +303,12 @@ const styles = StyleSheet.create({
   progress: {
     paddingHorizontal: 16,
     paddingVertical: 4,
-    backgroundColor: '#EAF7F5',
+    backgroundColor: '#F5E7C8',
     borderRadius: 12,
   },
   progressText: {
     fontSize: 12,
-    color: '#2F9F97',
+    color: '#8F6A2E',
     fontWeight: '600',
   },
   knowledgeNavBar: {

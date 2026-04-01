@@ -347,22 +347,22 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           <Text style={styles.label}>附件（可选）</Text>
           <View style={styles.mediaActions}>
             <TouchableOpacity style={styles.mediaBtn} onPress={pickImages}>
-              <Ionicons name="image-outline" size={16} color="#2F9F97" />
+              <Ionicons name="image-outline" size={16} color="#C49A4B" />
               <Text style={styles.mediaBtnText}>上传图片</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.mediaBtn} onPress={takeAttachmentPhoto}>
-              <Ionicons name="camera-outline" size={16} color="#2F9F97" />
+              <Ionicons name="camera-outline" size={16} color="#C49A4B" />
               <Text style={styles.mediaBtnText}>直接拍照</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.mediaBtn}
               onPress={isRecording ? stopRecording : startRecording}
             >
-              <Ionicons name="mic-outline" size={16} color="#2F9F97" />
+              <Ionicons name="mic-outline" size={16} color="#C49A4B" />
               <Text style={styles.mediaBtnText}>{isRecording ? '停止录音' : '直接录音'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.mediaBtn} onPress={pickAudio}>
-              <Ionicons name="folder-open-outline" size={16} color="#2F9F97" />
+              <Ionicons name="folder-open-outline" size={16} color="#C49A4B" />
               <Text style={styles.mediaBtnText}>导入语音</Text>
             </TouchableOpacity>
           </View>
@@ -435,11 +435,11 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           />
           <View style={styles.sectionActionsRow}>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => pickSectionImages(setQuestionImages)}>
-              <Ionicons name="images-outline" size={16} color="#2F9F97" />
+              <Ionicons name="images-outline" size={16} color="#C49A4B" />
               <Text style={styles.sectionImageBtnText}>从相册选题目图</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => takeSectionPhoto(setQuestionImages)}>
-              <Ionicons name="camera-outline" size={16} color="#2F9F97" />
+              <Ionicons name="camera-outline" size={16} color="#C49A4B" />
               <Text style={styles.sectionImageBtnText}>直接拍题目图</Text>
             </TouchableOpacity>
           </View>
@@ -472,11 +472,11 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           />
           <View style={styles.sectionActionsRow}>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => pickSectionImages(setWrongAnswerImages)}>
-              <Ionicons name="images-outline" size={16} color="#2F9F97" />
+              <Ionicons name="images-outline" size={16} color="#C49A4B" />
               <Text style={styles.sectionImageBtnText}>上传错误答案图片</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => takeSectionPhoto(setWrongAnswerImages)}>
-              <Ionicons name="camera-outline" size={16} color="#2F9F97" />
+              <Ionicons name="camera-outline" size={16} color="#C49A4B" />
               <Text style={styles.sectionImageBtnText}>拍错误答案图片</Text>
             </TouchableOpacity>
           </View>
@@ -544,11 +544,11 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           />
           <View style={styles.sectionActionsRow}>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => pickSectionImages(setSummaryImages)}>
-              <Ionicons name="images-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="images-outline" size={16} color="#C49A4B" />
               <Text style={styles.sectionImageBtnText}>为总结上传图片</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => takeSectionPhoto(setSummaryImages)}>
-              <Ionicons name="camera-outline" size={16} color="#4ECDC4" />
+              <Ionicons name="camera-outline" size={16} color="#C49A4B" />
               <Text style={styles.sectionImageBtnText}>拍总结图片</Text>
             </TouchableOpacity>
           </View>
@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
   },
   cancel: { fontSize: 16, color: '#6F655D' },
   title: { fontSize: 17, fontWeight: '600', color: '#2F2A24' },
-  sendBtn: { backgroundColor: '#2F9F97', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, minWidth: 60, alignItems: 'center' },
+  sendBtn: { backgroundColor: '#C49A4B', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, minWidth: 60, alignItems: 'center' },
   sendBtnDisabled: { opacity: 0.72 },
   sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   body: { padding: 16, gap: 20 },
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#EFE8DE',
   },
-  typeChipActive: { backgroundColor: '#2F9F97' },
+  typeChipActive: { backgroundColor: '#C49A4B' },
   typeChipText: { fontSize: 13, color: '#6F655D' },
   typeChipTextActive: { color: '#fff' },
   subjectList: { flexDirection: 'row', gap: 8 },
@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#EFE8DE',
   },
-  subjectChipActive: { backgroundColor: '#2F9F97' },
+  subjectChipActive: { backgroundColor: '#C49A4B' },
   subjectChipText: { fontSize: 13, color: '#6F655D' },
   subjectCreateRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   subjectCreateInput: {
@@ -624,7 +624,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 10,
     justifyContent: 'center',
-    backgroundColor: '#2F9F97',
+    backgroundColor: '#C49A4B',
   },
   subjectCreateBtnText: { color: '#fff', fontWeight: '600' },
   smallTip: { fontSize: 12, color: '#8A8279', marginTop: 8 },
@@ -633,12 +633,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#EAF7F5',
+    backgroundColor: '#F6EEDC',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  mediaBtnText: { color: '#2F9F97', fontWeight: '600', fontSize: 12 },
+  mediaBtnText: { color: '#8A7242', fontWeight: '600', fontSize: 12 },
   recordingHint: { marginTop: 6, color: '#8A8279', fontSize: 12 },
   imageList: { flexDirection: 'row', gap: 8, marginTop: 10 },
   imageItemWrap: { position: 'relative' },
@@ -676,7 +676,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9F5EE',
   },
   tagAddBtn: {
-    backgroundColor: '#2F9F97',
+    backgroundColor: '#C49A4B',
     borderRadius: 10,
     justifyContent: 'center',
     paddingHorizontal: 12,
@@ -693,10 +693,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 10,
-    backgroundColor: '#EAF7F5',
+    backgroundColor: '#F6EEDC',
     alignSelf: 'flex-start',
   },
-  sectionImageBtnText: { color: '#2F9F97', fontWeight: '600', fontSize: 12 },
+  sectionImageBtnText: { color: '#8A7242', fontWeight: '600', fontSize: 12 },
   input: {
     borderWidth: 1,
     borderColor: '#E8E1D8',

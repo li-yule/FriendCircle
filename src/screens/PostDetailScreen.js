@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import { formatTime, generateId } from '../utils/helpers';
 import VideoPreviewCard from '../components/VideoPreviewCard';
+import { ReliableImage } from '../components/ReliableImage';
 
 const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😍', '🥰', '😘', '😋', '😎', '🤩', '🥹', '😭', '😅', '😤', '😴', '🤔', '🫡', '🙌', '👏', '👍', '👎', '👌', '💪', '🙏', '🎉', '✨', '🔥', '🌟', '❤️', '💛', '💙', '🍀', '🌈', '📚', '🧠', '✍️', '✅', '💯'];
 
@@ -147,7 +148,7 @@ export default function PostDetailScreen({ navigation, route }) {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaRow}>
             {(livePost.images || []).map((uri, index) => (
               <TouchableOpacity key={`${uri}_${index}`} activeOpacity={0.9} onPress={() => openMediaViewer(index)}>
-                <Image source={{ uri }} style={styles.image} />
+                <ReliableImage uri={uri} style={styles.image} />
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -218,7 +219,7 @@ export default function PostDetailScreen({ navigation, route }) {
         ) : null}
         <View style={styles.inputRow}>
           <TouchableOpacity style={styles.emojiBtn} onPress={() => setShowEmojiPicker(prev => !prev)}>
-            <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={18} color="#2F9F97" />
+            <Ionicons name={showEmojiPicker ? 'happy' : 'happy-outline'} size={18} color="#C49A4B" />
           </TouchableOpacity>
           <TextInput
             style={styles.input}
@@ -230,7 +231,7 @@ export default function PostDetailScreen({ navigation, route }) {
             maxLength={300}
           />
           <TouchableOpacity style={styles.sendBtn} onPress={handleComment}>
-            <Ionicons name="send" size={18} color="#2F9F97" />
+            <Ionicons name="send" size={18} color="#C49A4B" />
           </TouchableOpacity>
         </View>
         {showEmojiPicker ? (
@@ -291,7 +292,7 @@ const styles = StyleSheet.create({
   commentTitle: { fontSize: 15, fontWeight: '700', color: '#2F2A24', marginTop: 8 },
   commentItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   commentBubble: { flex: 1, backgroundColor: '#FFFDF8', borderRadius: 12, padding: 10 },
-  commentName: { fontSize: 13, fontWeight: '700', color: '#2F9F97' },
+  commentName: { fontSize: 13, fontWeight: '700', color: '#8A7242' },
   replyHint: { fontSize: 11, color: '#8A8279', marginTop: 2 },
   commentText: { fontSize: 14, color: '#3D3731', marginTop: 2, lineHeight: 20 },
   commentTime: { fontSize: 11, color: '#A79C90', marginTop: 5 },
@@ -333,7 +334,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EAF7F5',
+    backgroundColor: '#F6EEDC',
   },
   emojiText: { fontSize: 18 },
   sendBtn: { padding: 4 },
