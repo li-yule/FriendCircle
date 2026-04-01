@@ -446,6 +446,10 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         {/* 评论 */}
         <Text style={styles.commentTitle}>讨论 ({(liveItem.comments || []).length})</Text>
         {(liveItem.comments || []).map(c => {
+          const hasText = Boolean(String(c.text || '').trim());
+          const hasImages = (c.images || []).length > 0;
+          const hasAudio = (c.audioFiles || []).length > 0;
+          if (!hasText && !hasImages && !hasAudio) return null;
           const cu = users.find(u => u.id === c.userId) || { name: '未知', avatarColor: '#ccc' };
           const rawReplyName = String(c.replyToUserName || '').trim();
           const replyingName = (rawReplyName && rawReplyName !== '未知' && rawReplyName !== '未知用户')

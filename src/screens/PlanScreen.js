@@ -101,23 +101,23 @@ export default function PlanScreen({ navigation }) {
 
     return (
       <View key={plan.id} style={styles.friendPlanCard}>
-        <View style={styles.minePlanHeader}>
-          <Text style={styles.minePlanDate}>{formatDate(plan.date)}</Text>
-          <View style={styles.minePlanHeaderRight}>
-            <TouchableOpacity
-              style={[styles.taskCircle, done && styles.taskCircleDone]}
-              onPress={() => dispatch({ type: 'TOGGLE_PLAN_DONE', payload: { planId: plan.id } })}
-            >
-              {done && <Ionicons name="checkmark" size={12} color="#fff" />}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
-              <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <View style={styles.minePlanRow}>
+          <TouchableOpacity
+            style={[styles.taskCircle, done && styles.taskCircleDone]}
+            onPress={() => dispatch({ type: 'TOGGLE_PLAN_DONE', payload: { planId: plan.id } })}
+          >
+            {done && <Ionicons name="checkmark" size={12} color="#fff" />}
+          </TouchableOpacity>
 
-        {!!plan.title && <Text style={[styles.friendPlanTitle, done && styles.donePlanTitle]}>{plan.title}</Text>}
-        <Text style={styles.planProgressText}>{percentText} · {done ? '已完成' : '未完成'}</Text>
+          <View style={styles.minePlanMain}>
+            <Text style={styles.minePlanDate}>{formatDate(plan.date)}</Text>
+            {!!plan.title && <Text style={[styles.friendPlanTitle, done && styles.donePlanTitle]}>{plan.title}</Text>}
+          </View>
+
+          <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
+            <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -306,8 +306,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   friendPlanHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  minePlanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  minePlanHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  minePlanRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  minePlanMain: { flex: 1, gap: 4 },
   taskCircle: {
     width: 20,
     height: 20,

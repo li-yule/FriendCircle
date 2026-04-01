@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Alert, TextInput,
+  Alert, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,11 +20,19 @@ export default function ProfileScreen({ navigation }) {
   const [nameInput, setNameInput] = useState(currentUser.name || '');
   const [bioInput, setBioInput] = useState(currentUser.bio || '');
   const [avatarInput, setAvatarInput] = useState(currentUser.avatar || null);
+  const [savingProfile, setSavingProfile] = useState(false);
   const readInteractionIds = new Set(state.notifications?.[currentUser.id]?.readInteractionIds || []);
 
   const myPosts = posts.filter(p => p.userId === currentUser.id);
   const myPlans = plans.filter(p => p.userId === currentUser.id);
-  const interactionKeyOf = (interaction) => `${interaction.sourceType}:${interaction.id}`;
+  const interactionKeyOf = (interaction) => {
+    const sourceType = interaction?.sourceType || 'unknown';
+    const sourceId = interaction?.sourceId || 'unknown';
+    const fromUserId = interaction?.fromUserId || interaction?.fromUser?.id || 'unknown';
+    const createdAt = interaction?.createdAt || 'unknown';
+    const text = String(interaction?.text || '').trim();
+    return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
+  };
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
       (post.comments || [])
@@ -33,6 +41,7 @@ export default function ProfileScreen({ navigation }) {
           id: comment.id,
           sourceType: 'post',
           sourceId: post.id,
+            fromUserId: comment.userId,
           sourcePreview: post.text || '动态内容',
           fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
           isReplyToMe: comment.replyToUserId === currentUser.id,
@@ -50,6 +59,7 @@ export default function ProfileScreen({ navigation }) {
             id: comment.id,
             sourceType: 'knowledge',
             sourceId: item.id,
+            fromUserId: comment.userId,
             sourcePreview: item.question || '知识内容',
             fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
             isReplyToMe: comment.replyToUserId === currentUser.id,
@@ -136,10 +146,27 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const handleSaveProfile = async () => {
+    if (savingProfile) return;
+
+    const nextName = String(nameInput || '').trim();
+    const nextBio = String(bioInput || '').trim();
+    const nextAvatar = avatarInput || null;
+
+    if (
+      nextName === String(currentUser.name || '').trim() &&
+      nextBio === String(currentUser.bio || '').trim() &&
+      nextAvatar === (currentUser.avatar || null)
+    ) {
+      setEditing(false);
+      return;
+    }
+
+    setSavingProfile(true);
     const result = await dispatch({
       type: 'UPDATE_PROFILE',
-      payload: { name: nameInput, bio: bioInput, avatar: avatarInput },
+      payload: { name: nextName, bio: nextBio, avatar: nextAvatar },
     });
+    setSavingProfile(false);
     if (!result?.ok) {
       Alert.alert('保存失败', result?.error || '请稍后重试');
       return;
@@ -156,7 +183,7 @@ export default function ProfileScreen({ navigation }) {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.7,
+      quality: 0.45,
       aspect: [1, 1],
     });
     if (result.canceled) return;
@@ -251,18 +278,8 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const handleToggleInteractions = async () => {
-    const nextVisible = !showInteractions;
-    setShowInteractions(nextVisible);
-    if (!nextVisible) return;
-
-    const unreadItems = incomingInteractions.filter(item => !readInteractionIds.has(interactionKeyOf(item)));
-    for (const item of unreadItems) {
-      await dispatch({
-        type: 'MARK_INTERACTION_READ',
-        payload: { userId: currentUser.id, interactionKey: interactionKeyOf(item) },
-      });
-    }
+  const handleToggleInteractions = () => {
+    setShowInteractions(prev => !prev);
   };
 
   return (
@@ -307,8 +324,8 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.accountTag}>我的账号</Text>
           <View style={styles.accountActions}>
             {editing ? (
-              <TouchableOpacity onPress={handleSaveProfile} style={styles.accountBtn}>
-                <Text style={styles.accountBtnText}>保存资料</Text>
+              <TouchableOpacity onPress={handleSaveProfile} style={[styles.accountBtn, savingProfile && styles.accountBtnDisabled]} disabled={savingProfile}>
+                <Text style={styles.accountBtnText}>{savingProfile ? '保存中...' : '保存资料'}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity onPress={() => setEditing(true)} style={styles.accountBtn}>
@@ -524,6 +541,7 @@ const styles = StyleSheet.create({
   accountActions: { flexDirection: 'row', gap: 8 },
   accountTag: { fontSize: 12, color: '#C49A4B', fontWeight: '700' },
   accountBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#F6EEDC' },
+  accountBtnDisabled: { opacity: 0.65 },
   accountBtnText: { color: '#8A7242', fontWeight: '600', fontSize: 12 },
   logoutBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#FFEAEA' },
   logoutBtnText: { color: '#FF6B6B', fontWeight: '600', fontSize: 12 },

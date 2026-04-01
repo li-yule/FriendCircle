@@ -70,17 +70,24 @@ function MainTabs() {
   const myKnowledge = (state.knowledge || []).filter(item => item.userId === currentUser?.id);
   const readInteractionIds = new Set(state.notifications?.[currentUser?.id]?.readInteractionIds || []);
 
+  const interactionKeyOf = (sourceType, sourceId, comment) => {
+    const fromUserId = comment?.userId || 'unknown';
+    const createdAt = comment?.createdAt || 'unknown';
+    const text = String(comment?.text || '').trim();
+    return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
+  };
+
   const unreadPostInteractions = myPosts.reduce((sum, post) => {
     const next = (post.comments || [])
       .filter(comment => comment.userId !== currentUser?.id)
-      .filter(comment => !readInteractionIds.has(`post:${comment.id}`)).length;
+      .filter(comment => !readInteractionIds.has(interactionKeyOf('post', post.id, comment))).length;
     return sum + next;
   }, 0);
 
   const unreadKnowledgeInteractions = myKnowledge.reduce((sum, item) => {
     const next = (item.comments || [])
       .filter(comment => comment.userId !== currentUser?.id)
-      .filter(comment => !readInteractionIds.has(`knowledge:${comment.id}`)).length;
+      .filter(comment => !readInteractionIds.has(interactionKeyOf('knowledge', item.id, comment))).length;
     return sum + next;
   }, 0);
 
