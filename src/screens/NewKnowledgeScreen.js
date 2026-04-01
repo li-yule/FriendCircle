@@ -507,11 +507,11 @@ export default function NewKnowledgeScreen({ navigation, route }) {
           />
           <View style={styles.sectionActionsRow}>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => pickSectionImages(setCorrectAnswerImages)}>
-              <Ionicons name="images-outline" size={16} color="#2F9F97" />
+              <Ionicons name="images-outline" size={16} color="#C49A4B" />
               <Text style={styles.sectionImageBtnText}>上传正确答案图片</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sectionImageBtn} onPress={() => takeSectionPhoto(setCorrectAnswerImages)}>
-              <Ionicons name="camera-outline" size={16} color="#2F9F97" />
+              <Ionicons name="camera-outline" size={16} color="#C49A4B" />
               <Text style={styles.sectionImageBtnText}>拍正确答案图片</Text>
             </TouchableOpacity>
           </View>
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   },
   subjectCreateBtnText: { color: '#fff', fontWeight: '600' },
   smallTip: { fontSize: 12, color: '#8A8279', marginTop: 8 },
-  mediaActions: { flexDirection: 'row', gap: 10 },
+  mediaActions: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   mediaBtn: {
     flexDirection: 'row',
     alignItems: 'center',

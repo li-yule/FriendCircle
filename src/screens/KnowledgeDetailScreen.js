@@ -242,7 +242,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 68}>
       {/* 顶部导航 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -642,7 +642,7 @@ const styles = StyleSheet.create({
   questionText: { fontSize: 15, color: '#2F2A24', lineHeight: 24 },
   questionPlaceholder: { fontSize: 14, color: '#8A8279', lineHeight: 22, fontStyle: 'italic' },
   wrongText: { fontSize: 15, color: '#FF6B6B', lineHeight: 22 },
-  correctText: { fontSize: 15, color: '#4CAF50', lineHeight: 22 },
+  correctText: { fontSize: 15, color: '#C49A4B', lineHeight: 22 },
   summaryText: { fontSize: 15, color: '#6F655D', lineHeight: 24 },
   imageRow: { flexDirection: 'row', gap: 10 },
   imageItem: { width: 120, height: 120, borderRadius: 10 },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { INITIAL_USERS } from '../data/initialData';
 
 // 头像组件：显示彩色首字母头像
@@ -8,11 +8,19 @@ export function Avatar({ user, size = 40, onPress }) {
   if (!u) return null;
   const firstChar = u.name ? u.name[0] : '?';
   const fontSize = size * 0.4;
+  const hasAvatarImage = typeof u.avatar === 'string' && u.avatar.trim().length > 0;
 
   const inner = (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: u.avatarColor || '#ccc' }]}>
-      <Text style={[styles.avatarText, { fontSize }]}>{firstChar}</Text>
-    </View>
+    hasAvatarImage ? (
+      <Image
+        source={{ uri: u.avatar }}
+        style={[styles.avatarImage, { width: size, height: size, borderRadius: size / 2 }]}
+      />
+    ) : (
+      <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: u.avatarColor || '#ccc' }]}>
+        <Text style={[styles.avatarText, { fontSize }]}>{firstChar}</Text>
+      </View>
+    )
   );
 
   if (onPress) return <TouchableOpacity onPress={onPress}>{inner}</TouchableOpacity>;
@@ -27,5 +35,9 @@ const styles = StyleSheet.create({
   avatarText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  avatarImage: {
+    resizeMode: 'cover',
+    backgroundColor: '#ddd',
   },
 });

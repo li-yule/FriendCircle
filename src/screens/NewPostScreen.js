@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
+import VideoPreviewCard from '../components/VideoPreviewCard';
 import { generateId } from '../utils/helpers';
 
 const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
@@ -251,9 +252,10 @@ export default function NewPostScreen({ navigation }) {
             {videos.map((uri, idx) => (
               <View key={`${uri}_${idx}`} style={styles.videoWrapper}>
                 <View style={styles.previewVideoPlaceholder}>
-                  <Ionicons name="videocam" size={28} color="#C49A4B" />
-                  <Text style={styles.previewVideoText}>已选择视频 {idx + 1}</Text>
-                  <Text style={styles.previewVideoMeta} numberOfLines={1}>{videoMeta[uri] || '视频文件'}</Text>
+                  <VideoPreviewCard uri={uri} label={`视频 ${idx + 1}`} style={styles.previewVideoCard} />
+                  <View style={styles.previewVideoMetaBar}>
+                    <Text style={styles.previewVideoMeta} numberOfLines={1}>{videoMeta[uri] || '视频文件'}</Text>
+                  </View>
                 </View>
                 <TouchableOpacity style={styles.removeBtn} onPress={() => removeVideo(idx)}>
                   <Ionicons name="close-circle" size={22} color="#fff" />
@@ -360,17 +362,23 @@ const styles = StyleSheet.create({
   videoWrapper: { position: 'relative' },
   previewVideoPlaceholder: {
     width: '100%',
-    height: 110,
+    height: 154,
     borderRadius: 12,
     backgroundColor: '#F6EEDC',
     borderWidth: 1,
     borderColor: '#E9DDBF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
-  previewVideoText: { color: '#8A7242', fontSize: 13, fontWeight: '600' },
-  previewVideoMeta: { color: '#9B8660', fontSize: 11, marginTop: 2, maxWidth: '85%' },
+  previewVideoCard: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  previewVideoMetaBar: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  previewVideoMeta: { color: '#fff', fontSize: 12 },
   removeBtn: {
     position: 'absolute',
     top: -8,

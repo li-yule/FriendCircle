@@ -4,6 +4,7 @@ import {
   Image, Alert, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
 import VideoPreviewCard from '../components/VideoPreviewCard';
@@ -18,6 +19,7 @@ export default function ProfileScreen({ navigation }) {
   const [showInteractions, setShowInteractions] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name || '');
   const [bioInput, setBioInput] = useState(currentUser.bio || '');
+  const [avatarInput, setAvatarInput] = useState(currentUser.avatar || null);
   const readInteractionIds = new Set(state.notifications?.[currentUser.id]?.readInteractionIds || []);
 
   const myPosts = posts.filter(p => p.userId === currentUser.id);
@@ -136,13 +138,31 @@ export default function ProfileScreen({ navigation }) {
   const handleSaveProfile = async () => {
     const result = await dispatch({
       type: 'UPDATE_PROFILE',
-      payload: { name: nameInput, bio: bioInput },
+      payload: { name: nameInput, bio: bioInput, avatar: avatarInput },
     });
     if (!result?.ok) {
       Alert.alert('保存失败', result?.error || '请稍后重试');
       return;
     }
     setEditing(false);
+  };
+
+  const handlePickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('需要权限', '请允许访问相册后再更换头像');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+      aspect: [1, 1],
+    });
+    if (result.canceled) return;
+    const uri = result.assets?.[0]?.uri;
+    if (!uri) return;
+    setAvatarInput(uri);
   };
 
   const handleLogout = async () => {
@@ -172,10 +192,7 @@ export default function ProfileScreen({ navigation }) {
           <ReliableImage uri={item.images[0]} style={styles.miniImg} />
         ) : hasVideos ? (
           <View style={styles.videoThumbWrap}>
-            <VideoPreviewCard uri={item.videos[0]} label="视频" style={[styles.miniImg, styles.videoThumbPlaceholder]} />
-            <View style={styles.videoThumbOverlay}>
-              <Ionicons name="play-circle" size={28} color="#fff" />
-            </View>
+            <VideoPreviewCard uri={item.videos[0]} label="视频" showFloatingButton={false} style={[styles.miniImg, styles.videoThumbPlaceholder]} />
           </View>
         ) : (
           <View style={[styles.miniImg, styles.textThumb]}>
@@ -234,8 +251,18 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const handleToggleInteractions = () => {
-    setShowInteractions(prev => !prev);
+  const handleToggleInteractions = async () => {
+    const nextVisible = !showInteractions;
+    setShowInteractions(nextVisible);
+    if (!nextVisible) return;
+
+    const unreadItems = incomingInteractions.filter(item => !readInteractionIds.has(interactionKeyOf(item)));
+    for (const item of unreadItems) {
+      await dispatch({
+        type: 'MARK_INTERACTION_READ',
+        payload: { userId: currentUser.id, interactionKey: interactionKeyOf(item) },
+      });
+    }
   };
 
   return (
@@ -253,12 +280,20 @@ export default function ProfileScreen({ navigation }) {
           </TouchableOpacity>
         </View>
         <View style={styles.profileTop}>
-          <Avatar user={currentUser} size={72} />
+          <View>
+            <Avatar user={{ ...currentUser, avatar: avatarInput || currentUser.avatar }} size={72} onPress={editing ? handlePickAvatar : undefined} />
+            {editing && (
+              <TouchableOpacity style={styles.avatarEditBtn} onPress={handlePickAvatar}>
+                <Ionicons name="camera" size={14} color="#fff" />
+              </TouchableOpacity>
+            )}
+          </View>
           <View style={styles.profileInfo}>
             {editing ? (
               <>
                 <TextInput style={styles.editInput} value={nameInput} onChangeText={setNameInput} placeholder="昵称" />
                 <TextInput style={[styles.editInput, styles.editBioInput]} value={bioInput} onChangeText={setBioInput} placeholder="个性签名" multiline />
+                <Text style={styles.avatarHint}>点击头像可更换头像</Text>
               </>
             ) : (
               <>
@@ -471,6 +506,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   editBioInput: { minHeight: 44 },
+  avatarEditBtn: {
+    position: 'absolute',
+    right: -4,
+    bottom: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#C49A4B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFDF8',
+  },
+  avatarHint: { fontSize: 11, color: '#8A8279', marginTop: 2 },
   accountRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   accountActions: { flexDirection: 'row', gap: 8 },
   accountTag: { fontSize: 12, color: '#C49A4B', fontWeight: '700' },
@@ -539,14 +588,6 @@ const styles = StyleSheet.create({
   videoThumbWrap: { position: 'relative' },
   videoThumbPlaceholder: {
     overflow: 'hidden',
-  },
-  videoThumbOverlay: {
-    position: 'absolute',
-    inset: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.18)',
-    borderRadius: 10,
   },
   thumbText: { fontSize: 11, color: '#8A7242', lineHeight: 16 },
   mediaBadge: { fontSize: 10, color: '#8A7242', marginTop: 6, fontWeight: '700', minHeight: 14 },

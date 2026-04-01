@@ -17,6 +17,7 @@ const MAX_VIDEO_UPLOAD_BYTES = 20 * 1024 * 1024;
 const LOCAL_MUTATION_MUTE_MS = 2500;
 const AUTH_CACHE_KEY = 'friendcircle_auth_cache_v1';
 const NOTIFICATIONS_CACHE_KEY = 'friendcircle_notifications_cache_v1';
+const PLAN_DONE_MARKER_ID = '__plan_done__';
 
 function getNotificationUserCacheKey(userId) {
   return `friendcircle_notifications_cache_${userId}`;
@@ -158,18 +159,21 @@ function normalizePost(item) {
 }
 
 function normalizePlan(item) {
+  const rawTasks = ensureArray(item?.tasks);
+  const marker = rawTasks.find(task => task?.id === PLAN_DONE_MARKER_ID);
   return {
     id: item?.id || generateId(),
     userId: item?.userId || item?.user_id || '',
     title: item?.title || '',
     date: item?.date || new Date().toISOString(),
-    tasks: ensureArray(item?.tasks).map(task => ({
+    tasks: rawTasks.filter(task => task?.id !== PLAN_DONE_MARKER_ID).map(task => ({
       id: task?.id || generateId(),
       text: task?.text || '',
       done: Boolean(task?.done),
       reminderTime: task?.reminderTime || '',
     })),
     reminderAt: item?.reminderAt || item?.reminder_at || '',
+    done: typeof item?.done === 'boolean' ? item.done : Boolean(marker?.done),
     createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
   };
 }
@@ -227,12 +231,15 @@ function serializePost(post) {
 
 function serializePlan(plan) {
   const normalized = normalizePlan(plan);
+  const serializedTasks = normalized.done
+    ? [{ id: PLAN_DONE_MARKER_ID, text: '', done: true, reminderTime: '' }, ...normalized.tasks]
+    : normalized.tasks;
   return {
     id: normalized.id,
     user_id: normalized.userId,
     title: normalized.title,
     date: normalized.date,
-    tasks: normalized.tasks,
+    tasks: serializedTasks,
     created_at: normalized.createdAt,
   };
 }
@@ -433,10 +440,15 @@ function reducer(state, action) {
 
     case 'UPDATE_PROFILE': {
       if (!state.currentUser) return state;
-      const { name, bio } = action.payload;
+      const { name, bio, avatar } = action.payload;
       const users = state.users.map(user =>
         user.id === state.currentUser.id
-          ? { ...user, name: name?.trim() || user.name, bio: bio?.trim() || '' }
+          ? {
+              ...user,
+              name: name?.trim() || user.name,
+              bio: bio?.trim() || '',
+              avatar: avatar || null,
+            }
           : user
       );
       return { ...state, users, currentUser: syncCurrentUser(users, state.currentUser.id) };
@@ -582,6 +594,17 @@ function reducer(state, action) {
             ),
           };
         }),
+      };
+    }
+
+    case 'TOGGLE_PLAN_DONE': {
+      const { planId } = action.payload || {};
+      if (!planId) return state;
+      return {
+        ...state,
+        plans: state.plans.map(plan =>
+          plan.id === planId ? { ...plan, done: !plan.done } : plan
+        ),
       };
     }
 
@@ -985,7 +1008,12 @@ export function AppProvider({ children }) {
       if (!active) return;
       cloudUserIdRef.current = userId;
       const userNotificationsRaw = await AsyncStorage.getItem(getNotificationUserCacheKey(userId));
-      const userNotifications = userNotificationsRaw ? JSON.parse(userNotificationsRaw) : null;
+      let userNotifications = null;
+      try {
+        userNotifications = userNotificationsRaw ? JSON.parse(userNotificationsRaw) : null;
+      } catch {
+        userNotifications = null;
+      }
       snapshot.notifications = {
         ...normalizeNotifications(cachedNotifications),
         ...(userNotifications ? { [userId]: userNotifications } : {}),
@@ -1144,28 +1172,31 @@ export function AppProvider({ children }) {
         const authUser = signInRes.data.user;
         if (authUser?.id) {
           const currentState = stateRef.current;
-          let profile = null;
+          const fallback = {
+            id: authUser.id,
+            account,
+            name: currentState.users.find(u => normalizeAccount(u.account || '') === account)?.name || account,
+          };
 
-          const { data } = await supabase
+          // 登录成功后先快速进入应用，资料同步放到后台完成，减少“登录中”等待。
+          baseDispatch({
+            type: 'LOAD_STATE',
+            payload: mergeCurrentUserFast(currentState, fallback, fallback),
+          });
+
+          supabase
             .from('profiles')
             .select('id,account,name,bio,avatar,avatar_color,friends,subjects')
             .eq('id', authUser.id)
-            .maybeSingle();
-
-          profile = data || {
-            id: authUser.id,
-            account,
-            name: account,
-          };
-
-          baseDispatch({
-            type: 'LOAD_STATE',
-            payload: mergeCurrentUserFast(currentState, profile, {
-              id: authUser.id,
-              account,
-              name: account,
-            }),
-          });
+            .maybeSingle()
+            .then(({ data }) => {
+              if (!data) return;
+              baseDispatch({
+                type: 'LOAD_STATE',
+                payload: mergeCurrentUserFast(stateRef.current, data, fallback),
+              });
+            })
+            .catch(() => {});
 
           await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
         }
@@ -1306,12 +1337,26 @@ export function AppProvider({ children }) {
 
       if (action.type === 'UPDATE_PROFILE') {
         markLocalMutation('profiles');
+        let avatar = action.payload?.avatar ?? currentUser.avatar ?? null;
+        if (avatar && !isRemoteAsset(avatar)) {
+          avatar = await uploadAssetIfNeeded(currentUser.id, avatar, 'profiles/avatars');
+        }
         const { error } = await supabase.from('profiles').update({
           name: action.payload?.name?.trim() || currentUser.name,
           bio: action.payload?.bio?.trim() || '',
+          avatar,
           updated_at: new Date().toISOString(),
         }).eq('id', currentUser.id);
         if (error) return { ok: false, error: '资料保存失败' };
+
+        baseDispatch({
+          type: 'UPDATE_PROFILE',
+          payload: {
+            ...action.payload,
+            avatar,
+          },
+        });
+        return { ok: true };
       } else if (action.type === 'ADD_FRIEND' || action.type === 'REMOVE_FRIEND') {
         markLocalMutation('profiles');
         const targetUserId = action.payload;
@@ -1469,9 +1514,13 @@ export function AppProvider({ children }) {
         if (error) return { ok: false, error: '删除规划失败' };
         baseDispatch(action);
         return { ok: true };
-      } else if (action.type === 'TOGGLE_PLAN_TASK' || action.type === 'UPDATE_PLAN') {
+      } else if (action.type === 'TOGGLE_PLAN_TASK' || action.type === 'UPDATE_PLAN' || action.type === 'TOGGLE_PLAN_DONE') {
         markLocalMutation('plans');
-        const planId = action.type === 'TOGGLE_PLAN_TASK' ? action.payload?.planId : action.payload?.id;
+        const planId = action.type === 'TOGGLE_PLAN_TASK'
+          ? action.payload?.planId
+          : action.type === 'TOGGLE_PLAN_DONE'
+            ? action.payload?.planId
+            : action.payload?.id;
         const plan = currentState.plans.find(item => item.id === planId);
         if (!plan) return { ok: false, error: '规划不存在' };
         const mergedPlan = action.type === 'TOGGLE_PLAN_TASK'
@@ -1481,6 +1530,8 @@ export function AppProvider({ children }) {
                 task.id === action.payload?.taskId ? { ...task, done: !task.done } : task
               ),
             }
+          : action.type === 'TOGGLE_PLAN_DONE'
+            ? { ...plan, done: !plan.done }
           : { ...plan, ...action.payload };
         const { error } = await supabase.from('plans').update(serializePlan(mergedPlan)).eq('id', planId);
         if (error) return { ok: false, error: '规划更新失败' };
@@ -1550,7 +1601,7 @@ export function AppProvider({ children }) {
         return { ok: true };
       }
 
-      if (['UPDATE_PROFILE', 'ADD_FRIEND', 'REMOVE_FRIEND', 'ADD_SUBJECT', 'REMOVE_SUBJECT'].includes(action.type)) {
+      if (['ADD_FRIEND', 'REMOVE_FRIEND', 'ADD_SUBJECT', 'REMOVE_SUBJECT'].includes(action.type)) {
         baseDispatch(action);
       }
       return { ok: true };

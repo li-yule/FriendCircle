@@ -47,8 +47,12 @@ export default function PlanScreen({ navigation }) {
 
   const selectedSummary = useMemo(() => {
     const mineToday = myPlans.filter(item => toDateKey(item.date) === selectedDate);
-    const total = mineToday.reduce((sum, item) => sum + (item.tasks || []).length, 0);
-    const done = mineToday.reduce((sum, item) => sum + (item.tasks || []).filter(task => task.done).length, 0);
+    const total = mineToday.length;
+    const done = mineToday.reduce((sum, item) => {
+      const taskList = item.tasks || [];
+      const taskDone = taskList.length > 0 && taskList.every(task => task.done);
+      return sum + (item.done || taskDone ? 1 : 0);
+    }, 0);
     const percent = total > 0 ? Math.round((done / total) * 100) : 0;
     return { done, total, percent };
   }, [myPlans, selectedDate]);
@@ -90,23 +94,30 @@ export default function PlanScreen({ navigation }) {
   };
 
   const renderMinePlan = (plan) => {
-    const done = (plan.tasks || []).filter(task => task.done).length;
-    const total = (plan.tasks || []).length;
-    const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+    const taskList = plan.tasks || [];
+    const taskDone = taskList.length > 0 && taskList.every(task => task.done);
+    const done = Boolean(plan.done || taskDone);
+    const percentText = done ? '100%' : '0%';
 
     return (
       <View key={plan.id} style={styles.friendPlanCard}>
         <View style={styles.minePlanHeader}>
           <Text style={styles.minePlanDate}>{formatDate(plan.date)}</Text>
           <View style={styles.minePlanHeaderRight}>
+            <TouchableOpacity
+              style={[styles.taskCircle, done && styles.taskCircleDone]}
+              onPress={() => dispatch({ type: 'TOGGLE_PLAN_DONE', payload: { planId: plan.id } })}
+            >
+              {done && <Ionicons name="checkmark" size={12} color="#fff" />}
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
               <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {!!plan.title && <Text style={styles.friendPlanTitle}>{plan.title}</Text>}
-        {total > 0 && <Text style={styles.planProgressText}>{done}/{total} 完成</Text>}
+        {!!plan.title && <Text style={[styles.friendPlanTitle, done && styles.donePlanTitle]}>{plan.title}</Text>}
+        <Text style={styles.planProgressText}>{percentText} · {done ? '已完成' : '未完成'}</Text>
       </View>
     );
   };
@@ -297,12 +308,26 @@ const styles = StyleSheet.create({
   friendPlanHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   minePlanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   minePlanHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  taskCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#C49A4B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFDF8',
+  },
+  taskCircleDone: {
+    backgroundColor: '#C49A4B',
+  },
   minePlanDate: { fontSize: 12, color: '#8A969E' },
   planProgressText: { marginTop: 8, fontSize: 12, color: '#C49A4B', fontWeight: '600' },
   friendPlanInfo: { flex: 1, marginLeft: 10 },
   friendPlanAuthor: { fontSize: 15, fontWeight: '700', color: '#3F3932' },
   friendPlanDate: { marginTop: 2, fontSize: 12, color: '#8A969E' },
   friendPlanTitle: { fontSize: 16, fontWeight: '700', color: '#3F3932' },
+  donePlanTitle: { textDecorationLine: 'line-through', color: '#9C948A' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 100 },
   emptyText: { color: '#bbb', fontSize: 14, marginTop: 12, textAlign: 'center' },
 });

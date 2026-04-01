@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
-export default function VideoPreviewCard({ uri, label = '视频动态', style }) {
+export default function VideoPreviewCard({ uri, label = '视频动态', style, showFloatingButton = true }) {
   const [playing, setPlaying] = useState(false);
   const [activated, setActivated] = useState(true);
 
@@ -56,11 +56,13 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style })
         <Text style={styles.label}>{label}</Text>
       </View>
       <TouchableOpacity style={styles.centerHotArea} onPress={togglePlay} />
-      <TouchableOpacity style={styles.playHotArea} onPress={togglePlay}>
-        <View style={styles.playButton}>
-          <Ionicons name={playing ? 'pause' : 'play'} size={16} color="#fff" />
-        </View>
-      </TouchableOpacity>
+      {showFloatingButton ? (
+        <TouchableOpacity style={styles.playHotArea} onPress={togglePlay}>
+          <View style={styles.playButton}>
+            <Ionicons name={playing ? 'pause' : 'play'} size={16} color="#fff" />
+          </View>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
