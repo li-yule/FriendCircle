@@ -448,7 +448,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         {(liveItem.comments || []).map(c => {
           const hasText = Boolean(String(c.text || '').trim());
           const hasImages = (c.images || []).length > 0;
-          const hasAudio = (c.audioFiles || []).length > 0;
+          const hasAudio = (c.audioFiles || []).some(file => Boolean(file?.uri));
           if (!hasText && !hasImages && !hasAudio) return null;
           const cu = users.find(u => u.id === c.userId) || { name: '未知', avatarColor: '#ccc' };
           const rawReplyName = String(c.replyToUserName || '').trim();
@@ -480,7 +480,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
                 )}
                 {c.audioFiles?.length > 0 && (
                   <View style={styles.audioList}>
-                    {c.audioFiles.map((file, index) => (
+                    {c.audioFiles.filter(file => file?.uri).map((file, index) => (
                       <TouchableOpacity
                         key={`${file.uri}_${index}`}
                         style={styles.audioItem}

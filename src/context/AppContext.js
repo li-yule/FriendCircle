@@ -16,6 +16,7 @@ const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_UPLOAD_BYTES = 20 * 1024 * 1024;
 const LOCAL_MUTATION_MUTE_MS = 2500;
 const AUTH_CACHE_KEY = 'friendcircle_auth_cache_v1';
+const CURRENT_USER_CACHE_KEY = 'friendcircle_current_user_cache_v1';
 const NOTIFICATIONS_CACHE_KEY = 'friendcircle_notifications_cache_v1';
 const PLAN_DONE_MARKER_ID = '__plan_done__';
 
@@ -116,6 +117,20 @@ function normalizeSubjectName(subject) {
 function syncCurrentUser(users, currentUserId) {
   if (!currentUserId) return null;
   return users.find(user => user.id === currentUserId) || null;
+}
+
+function serializeCurrentUserSnapshot(user) {
+  if (!user?.id) return null;
+  return {
+    id: user.id,
+    account: normalizeAccount(user.account || user.id),
+    name: user.name || '新用户',
+    bio: user.bio || '',
+    avatar: user.avatar || null,
+    avatarColor: user.avatarColor || pickAvatarColor(user.id),
+    friends: toUniqueStrings(user.friends),
+    subjects: toUniqueStrings(user.subjects).length > 0 ? toUniqueStrings(user.subjects) : [...DEFAULT_SUBJECTS.slice(0, 2)],
+  };
 }
 
 function normalizeComment(comment) {
@@ -1019,6 +1034,29 @@ export function AppProvider({ children }) {
         ...(userNotifications ? { [userId]: userNotifications } : {}),
       };
       baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+      const currentUserSnapshot = serializeCurrentUserSnapshot(snapshot.currentUser);
+      if (currentUserSnapshot) {
+        AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot)).catch(() => {});
+      }
+    };
+
+    const restoreLocalAuthState = async () => {
+      try {
+        const [authRaw, userRaw] = await Promise.all([
+          AsyncStorage.getItem(AUTH_CACHE_KEY),
+          AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
+        ]);
+        const authCache = authRaw ? JSON.parse(authRaw) : null;
+        const cachedUser = userRaw ? JSON.parse(userRaw) : null;
+        if (!authCache?.account || !authCache?.password || !cachedUser?.id) return false;
+
+        const currentState = createEmptyLoadedState(cachedNotifications);
+        const merged = mergeCurrentUserFast(currentState, cachedUser, cachedUser);
+        baseDispatch({ type: 'LOAD_STATE', payload: merged });
+        return true;
+      } catch {
+        return false;
+      }
     };
 
     const scheduleHydrate = (userId, tables = ['profiles', 'posts', 'plans', 'knowledge'], delay = 450) => {
@@ -1057,7 +1095,8 @@ export function AppProvider({ children }) {
     const loadCloud = async () => {
       try {
         cachedNotifications = await loadCachedNotifications();
-        if (active) {
+        const restoredLocally = await restoreLocalAuthState();
+        if (active && !restoredLocally) {
           baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
         }
 
@@ -1086,8 +1125,10 @@ export function AppProvider({ children }) {
             }
           }
 
-          cloudUserIdRef.current = null;
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+          if (!restoredLocally) {
+            cloudUserIdRef.current = null;
+            baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+          }
         }
       } catch {
         if (active) {
@@ -1102,7 +1143,13 @@ export function AppProvider({ children }) {
         scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
       } else if (active) {
         cloudUserIdRef.current = null;
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+          restoreLocalAuthState().then(restored => {
+            if (!restored) {
+              baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+            }
+          }).catch(() => {
+            baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+          });
       }
     });
 
@@ -1184,6 +1231,18 @@ export function AppProvider({ children }) {
             payload: mergeCurrentUserFast(currentState, fallback, fallback),
           });
 
+          const currentUserSnapshot = serializeCurrentUserSnapshot({
+            ...fallback,
+            bio: currentState.currentUser?.bio || '',
+            avatar: currentState.currentUser?.avatar || null,
+            avatarColor: currentState.currentUser?.avatarColor || pickAvatarColor(authUser.id),
+            friends: currentState.currentUser?.friends || [],
+            subjects: currentState.currentUser?.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
+          });
+          if (currentUserSnapshot) {
+            await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot));
+          }
+
           supabase
             .from('profiles')
             .select('id,account,name,bio,avatar,avatar_color,friends,subjects')
@@ -1195,6 +1254,19 @@ export function AppProvider({ children }) {
                 type: 'LOAD_STATE',
                 payload: mergeCurrentUserFast(stateRef.current, data, fallback),
               });
+              const snapshot = serializeCurrentUserSnapshot({
+                id: authUser.id,
+                account,
+                name: data.name || fallback.name,
+                bio: data.bio || '',
+                avatar: data.avatar || null,
+                avatarColor: data.avatar_color || pickAvatarColor(authUser.id),
+                friends: data.friends || [],
+                subjects: data.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
+              });
+              if (snapshot) {
+                AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
+              }
             })
             .catch(() => {});
 
@@ -1270,6 +1342,17 @@ export function AppProvider({ children }) {
           }),
         });
 
+        await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
+          id: authUserId,
+          account,
+          name: action.payload?.name,
+          bio: '',
+          avatar: null,
+          avatarColor: pickAvatarColor(authUserId),
+          friends: [],
+          subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
+        })));
+
         await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
 
         return { ok: true };
@@ -1279,6 +1362,7 @@ export function AppProvider({ children }) {
         const { error } = await supabase.auth.signOut();
         if (error) return { ok: false, error: '退出登录失败' };
         await AsyncStorage.removeItem(AUTH_CACHE_KEY);
+        await AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY);
         baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(stateRef.current.notifications) });
         return { ok: true };
       }
@@ -1356,6 +1440,12 @@ export function AppProvider({ children }) {
             avatar,
           },
         });
+        AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
+          ...currentUser,
+          name: action.payload?.name?.trim() || currentUser.name,
+          bio: action.payload?.bio?.trim() || '',
+          avatar,
+        }))).catch(() => {});
         return { ok: true };
       } else if (action.type === 'ADD_FRIEND' || action.type === 'REMOVE_FRIEND') {
         markLocalMutation('profiles');
@@ -1533,9 +1623,14 @@ export function AppProvider({ children }) {
           : action.type === 'TOGGLE_PLAN_DONE'
             ? { ...plan, done: !plan.done }
           : { ...plan, ...action.payload };
+        if (action.type === 'TOGGLE_PLAN_DONE') {
+          baseDispatch(action);
+        }
         const { error } = await supabase.from('plans').update(serializePlan(mergedPlan)).eq('id', planId);
         if (error) return { ok: false, error: '规划更新失败' };
-        baseDispatch(action);
+        if (action.type !== 'TOGGLE_PLAN_DONE') {
+          baseDispatch(action);
+        }
         return { ok: true };
       } else if (action.type === 'ADD_KNOWLEDGE') {
         markLocalMutation('knowledge');

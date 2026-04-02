@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Linking,
+  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Linking, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
@@ -16,10 +16,16 @@ export default function NewPlanScreen({ navigation }) {
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getTodayStr());
   const [enableReminder, setEnableReminder] = useState(false);
-  const [reminderTime, setReminderTime] = useState('21:00');
+  const [reminderHour, setReminderHour] = useState('21');
+  const [reminderMinute, setReminderMinute] = useState('00');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [timePickerPart, setTimePickerPart] = useState('hour'); // 'hour' | 'minute'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [permissionTip, setPermissionTip] = useState('通知权限状态未检测');
+  const reminderTime = `${reminderHour}:${reminderMinute}`;
+  const hourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
+  const minuteOptions = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
 
   useEffect(() => {
     let active = true;
@@ -176,6 +182,20 @@ export default function NewPlanScreen({ navigation }) {
     setEnableReminder(true);
   };
 
+  const openTimePicker = (part) => {
+    setTimePickerPart(part);
+    setTimePickerVisible(true);
+  };
+
+  const selectTimeValue = (value) => {
+    if (timePickerPart === 'hour') {
+      setReminderHour(value);
+    } else {
+      setReminderMinute(value);
+    }
+    setTimePickerVisible(false);
+  };
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
@@ -245,14 +265,13 @@ export default function NewPlanScreen({ navigation }) {
           {enableReminder && (
             <View style={styles.reminderInputRow}>
               <Ionicons name="alarm-outline" size={16} color="#FF6B6B" />
-              <TextInput
-                style={styles.reminderInput}
-                placeholder="HH:mm"
-                value={reminderTime}
-                onChangeText={setReminderTime}
-                maxLength={5}
-                keyboardType="numbers-and-punctuation"
-              />
+              <TouchableOpacity style={styles.timePickerBtn} onPress={() => openTimePicker('hour')}>
+                <Text style={styles.timePickerText}>{reminderHour}</Text>
+              </TouchableOpacity>
+              <Text style={styles.timeSeparator}>:</Text>
+              <TouchableOpacity style={styles.timePickerBtn} onPress={() => openTimePicker('minute')}>
+                <Text style={styles.timePickerText}>{reminderMinute}</Text>
+              </TouchableOpacity>
             </View>
           )}
           <Text style={styles.reminderHint}>支持本地提醒，示例：07:30、21:00。</Text>
@@ -273,6 +292,32 @@ export default function NewPlanScreen({ navigation }) {
         onClose={() => setDatePickerVisible(false)}
         onChange={setDate}
       />
+
+      <Modal visible={timePickerVisible} transparent animationType="fade" onRequestClose={() => setTimePickerVisible(false)}>
+        <View style={styles.modalMask}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{timePickerPart === 'hour' ? '选择小时' : '选择分钟'}</Text>
+            <ScrollView contentContainerStyle={styles.timeGrid}>
+              {(timePickerPart === 'hour' ? hourOptions : minuteOptions).map(value => (
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    styles.timeOption,
+                    timePickerPart === 'hour' && reminderHour === value && styles.timeOptionActive,
+                    timePickerPart === 'minute' && reminderMinute === value && styles.timeOptionActive,
+                  ]}
+                  onPress={() => selectTimeValue(value)}
+                >
+                  <Text style={styles.timeOptionText}>{value}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setTimePickerVisible(false)}>
+              <Text style={styles.modalCloseText}>关闭</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -381,9 +426,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  reminderInput: { flex: 1, fontSize: 14, color: '#8A7242', fontWeight: '600' },
+  timePickerBtn: {
+    minWidth: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#FFFDF8',
+    borderWidth: 1,
+    borderColor: '#E9DDBF',
+    alignItems: 'center',
+  },
+  timePickerText: { color: '#8A7242', fontWeight: '700', fontSize: 15 },
+  timeSeparator: { color: '#8A7242', fontWeight: '700', fontSize: 18 },
   reminderHint: { fontSize: 12, color: '#7D746B' },
   reminderPermissionHint: { fontSize: 12, color: '#7D746B' },
+  modalMask: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#FFFDF8',
+    borderRadius: 18,
+    padding: 16,
+    maxHeight: '72%',
+  },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#2F2A24', marginBottom: 12, textAlign: 'center' },
+  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  timeOption: {
+    width: '22%',
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#F2EEE6',
+    alignItems: 'center',
+  },
+  timeOptionActive: { backgroundColor: '#C49A4B' },
+  timeOptionText: { color: '#6F655D', fontWeight: '700' },
+  modalCloseBtn: {
+    marginTop: 14,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#F6EEDC',
+  },
+  modalCloseText: { color: '#8A7242', fontWeight: '700' },
   todayTip: {
     flexDirection: 'row',
     gap: 8,
