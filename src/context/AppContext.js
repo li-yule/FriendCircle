@@ -1027,7 +1027,7 @@ export function AppProvider({ children }) {
   }, [state.currentUser]);
 
   const hydrate = async (userId) => {
-    if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfigured) {
       baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
       return;
     }
@@ -1056,7 +1056,7 @@ export function AppProvider({ children }) {
   };
 
   const restoreLocalAuthState = async () => {
-    if (!isSupabaseConfigured()) return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
+    if (!isSupabaseConfigured) return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
     try {
       const [authRaw, userRaw] = await Promise.all([
         AsyncStorage.getItem(AUTH_CACHE_KEY),
@@ -1153,7 +1153,7 @@ export function AppProvider({ children }) {
   };
 
   const dispatch = async (action) => {
-    if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfigured) {
       return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
     }
 
@@ -1736,7 +1736,7 @@ export function AppProvider({ children }) {
   }, []);
 
   return (
-    <AppContext.Provider value={{ state, dispatch }}>
+    <AppContext.Provider value={{ state, dispatch, isCloudEnabled: isSupabaseConfigured }}>
       {children}
     </AppContext.Provider>
   );
