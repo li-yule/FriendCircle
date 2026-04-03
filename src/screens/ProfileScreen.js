@@ -14,15 +14,36 @@ import { formatTime, formatDate } from '../utils/helpers';
 export default function ProfileScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { currentUser, users, posts, plans, knowledge } = state;
+  const safeCurrentUser = currentUser || {
+    id: '',
+    name: '',
+    bio: '',
+    avatar: null,
+    friends: [],
+  };
   const [tab, setTab] = useState('posts'); // 'posts' | 'plans' | 'friends'
   const [editing, setEditing] = useState(false);
   const [showInteractions, setShowInteractions] = useState(false);
   const [showAllInteractions, setShowAllInteractions] = useState(false);
-  const [nameInput, setNameInput] = useState(currentUser.name || '');
-  const [bioInput, setBioInput] = useState(currentUser.bio || '');
-  const [avatarInput, setAvatarInput] = useState(currentUser.avatar || null);
+  const [nameInput, setNameInput] = useState(safeCurrentUser.name || '');
+  const [bioInput, setBioInput] = useState(safeCurrentUser.bio || '');
+  const [avatarInput, setAvatarInput] = useState(safeCurrentUser.avatar || null);
   const [savingProfile, setSavingProfile] = useState(false);
-  const readInteractionIds = new Set(state.notifications?.[currentUser.id]?.readInteractionIds || []);
+  const readInteractionIds = new Set(state.notifications?.[safeCurrentUser.id]?.readInteractionIds || []);
+
+  React.useEffect(() => {
+    setNameInput(safeCurrentUser.name || '');
+    setBioInput(safeCurrentUser.bio || '');
+    setAvatarInput(safeCurrentUser.avatar || null);
+  }, [safeCurrentUser.id, safeCurrentUser.name, safeCurrentUser.bio, safeCurrentUser.avatar]);
+
+  if (!currentUser?.id) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.tipText}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
 
   const myPosts = posts.filter(p => p.userId === currentUser.id);
   const myPlans = plans.filter(p => p.userId === currentUser.id);
