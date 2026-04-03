@@ -16,6 +16,14 @@ export default function PlanScreen({ navigation }) {
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
   const [pickerVisible, setPickerVisible] = useState(false);
 
+  if (!currentUser?.id) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.emptyText}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
+
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const myFriendIds = new Set(currentUser.friends || []);
 

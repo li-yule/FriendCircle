@@ -22,6 +22,14 @@ export default function PostDetailScreen({ navigation, route }) {
   const [replyTarget, setReplyTarget] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  if (!currentUser?.id) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.emptyText}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
+
   const getUserById = id => users.find(user => user.id === id) || { name: '未知用户', avatarColor: '#ccc' };
   const resolveReplyingName = (comment) => {
     if (comment?.replyToUserId) {

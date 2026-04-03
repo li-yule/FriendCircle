@@ -13,6 +13,16 @@ export default function NewPlanScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { currentUser } = state;
 
+  if (!currentUser?.id) {
+    return (
+      <View style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#666', fontSize: 14 }}>正在恢复登录状态...</Text>
+        </View>
+      </View>
+    );
+  }
+
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getTodayStr());
   const [enableReminder, setEnableReminder] = useState(false);

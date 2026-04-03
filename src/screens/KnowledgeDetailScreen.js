@@ -29,8 +29,23 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   const [isRecording, setIsRecording] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  useEffect(() => {
+    if (!liveItem) {
+      navigation.goBack();
+    }
+  }, [liveItem, navigation]);
+
+  if (!currentUser?.id) {
+    return (
+      <View style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#666', fontSize: 14 }}>正在恢复登录状态...</Text>
+        </View>
+      </View>
+    );
+  }
+
   if (!liveItem) {
-    navigation.goBack();
     return null;
   }
 
