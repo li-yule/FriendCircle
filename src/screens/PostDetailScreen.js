@@ -24,13 +24,11 @@ export default function PostDetailScreen({ navigation, route }) {
 
   const getUserById = id => users.find(user => user.id === id) || { name: '未知用户', avatarColor: '#ccc' };
   const resolveReplyingName = (comment) => {
-    const rawName = String(comment?.replyToUserName || '').trim();
-    if (rawName && rawName !== '未知' && rawName !== '未知用户') return rawName;
     if (comment?.replyToUserId) {
       const target = users.find(user => user.id === comment.replyToUserId);
-      return target?.name || '';
+      return target?.name || comment.replyToUserName || '';
     }
-    return '';
+    return comment.replyToUserName || '';
   };
 
   const mediaItems = useMemo(() => {

@@ -17,6 +17,7 @@ export default function ProfileScreen({ navigation }) {
   const [tab, setTab] = useState('posts'); // 'posts' | 'plans' | 'friends'
   const [editing, setEditing] = useState(false);
   const [showInteractions, setShowInteractions] = useState(false);
+  const [showAllInteractions, setShowAllInteractions] = useState(false);
   const [nameInput, setNameInput] = useState(currentUser.name || '');
   const [bioInput, setBioInput] = useState(currentUser.bio || '');
   const [avatarInput, setAvatarInput] = useState(currentUser.avatar || null);
@@ -28,10 +29,8 @@ export default function ProfileScreen({ navigation }) {
   const interactionKeyOf = (interaction) => {
     const sourceType = interaction?.sourceType || 'unknown';
     const sourceId = interaction?.sourceId || 'unknown';
-    const fromUserId = interaction?.fromUserId || interaction?.fromUser?.id || 'unknown';
-    const createdAt = interaction?.createdAt || 'unknown';
-    const text = String(interaction?.text || '').trim();
-    return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
+    const commentId = interaction?.id || 'unknown';
+    return `${sourceType}:${sourceId}:${commentId}`;
   };
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
@@ -72,10 +71,12 @@ export default function ProfileScreen({ navigation }) {
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       .slice(0, 30);
   }, [currentUser.id, knowledge, myPosts, users]);
-  const incomingCommentCount = useMemo(
-    () => incomingInteractions.filter(item => !readInteractionIds.has(interactionKeyOf(item))).length,
+  const unreadInteractions = useMemo(
+    () => incomingInteractions.filter(item => !readInteractionIds.has(interactionKeyOf(item))),
     [incomingInteractions, readInteractionIds]
   );
+  const displayedInteractions = showAllInteractions ? incomingInteractions : unreadInteractions;
+
     const myPlanDailyProgress = useMemo(() => {
       const map = new Map();
       myPlans.forEach(plan => {
@@ -380,13 +381,18 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.interactionPanel}>
           <View style={styles.interactionHeader}>
             <Text style={styles.sectionTitle}>互动消息</Text>
-            <TouchableOpacity onPress={() => setShowInteractions(false)}>
-              <Ionicons name="close" size={18} color="#999" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <TouchableOpacity onPress={() => setShowAllInteractions(prev => !prev)}>
+                <Text style={styles.interactionToggleText}>{showAllInteractions ? '只看未读' : '查看全部'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowInteractions(false)}>
+                <Ionicons name="close" size={18} color="#999" />
+              </TouchableOpacity>
+            </View>
           </View>
-          {incomingInteractions.length === 0 ? (
-            <Text style={styles.tipText}>暂无互动</Text>
-          ) : incomingInteractions.map(item => (
+          {displayedInteractions.length === 0 ? (
+            <Text style={styles.tipText}>{showAllInteractions ? '暂无互动' : '暂无未读互动'}</Text>
+          ) : displayedInteractions.map(item => (
             <TouchableOpacity key={`${item.sourceType}_${item.id}`} style={styles.interactionItem} onPress={() => openInteraction(item)}>
               <Avatar user={item.fromUser} size={28} />
               {!readInteractionIds.has(interactionKeyOf(item)) && <View style={styles.unreadDot} />}
@@ -572,16 +578,22 @@ const styles = StyleSheet.create({
   interactionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   interactionItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
   unreadDot: {
+    position: 'absolute',
+    left: 24,
+    top: 6,
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#FF6B6B',
+    borderWidth: 1,
+    borderColor: '#FFFDF8',
   },
-  interactionTextWrap: { flex: 1 },
+  interactionTextWrap: { flex: 1, marginLeft: 8 },
   interactionTitle: { fontSize: 12, color: '#333', fontWeight: '600' },
   interactionMeta: { fontSize: 11, color: '#9AA5AE', marginTop: 2 },
   interactionContent: { fontSize: 12, color: '#777', marginTop: 2 },
   interactionTime: { fontSize: 11, color: '#BBB' },
+  interactionToggleText: { fontSize: 12, color: '#4ECDC4', fontWeight: '600' },
   sectionTitle: { fontSize: 15, fontWeight: '600', color: '#2F2A24', marginBottom: 12 },
   userList: { flexDirection: 'row', gap: 12 },
   userChip: {

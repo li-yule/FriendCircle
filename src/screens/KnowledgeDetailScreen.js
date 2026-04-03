@@ -36,6 +36,13 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
 
   const author = users.find(u => u.id === liveItem.userId) || { name: '未知', avatarColor: '#ccc' };
   const liked = (liveItem.likes || []).includes(currentUser.id);
+  const resolveReplyingName = (comment) => {
+    if (comment?.replyToUserId) {
+      const target = users.find(user => user.id === comment.replyToUserId);
+      return target?.name || comment.replyToUserName || '';
+    }
+    return comment.replyToUserName || '';
+  };
   const siblingKnowledge = (state.knowledge || [])
     .filter(k => k.subject === liveItem.subject)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -451,10 +458,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
           const hasAudio = (c.audioFiles || []).some(file => Boolean(file?.uri));
           if (!hasText && !hasImages && !hasAudio) return null;
           const cu = users.find(u => u.id === c.userId) || { name: '未知', avatarColor: '#ccc' };
-          const rawReplyName = String(c.replyToUserName || '').trim();
-          const replyingName = (rawReplyName && rawReplyName !== '未知' && rawReplyName !== '未知用户')
-            ? rawReplyName
-            : (users.find(u => u.id === c.replyToUserId)?.name || '');
+          const replyingName = resolveReplyingName(c);
           return (
             <TouchableOpacity
               key={c.id}

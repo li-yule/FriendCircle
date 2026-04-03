@@ -274,7 +274,7 @@ export default function NewPlanScreen({ navigation }) {
               </TouchableOpacity>
             </View>
           )}
-          <Text style={styles.reminderHint}>支持本地提醒，示例：07:30、21:00。</Text>
+          <Text style={styles.reminderHint}>{enableReminder ? '点击小时或分钟可修改' : '支持本地提醒，示例：07:30、21:00。'}</Text>
           <Text style={styles.reminderPermissionHint}>{permissionTip}</Text>
         </View>
 

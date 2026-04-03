@@ -8,6 +8,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { PinchGestureHandler, State as GestureState } from 'react-native-gesture-handler';
+import { PanGestureHandler } from 'react-native-gesture-handler';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -35,9 +36,16 @@ function ImageSlide({ uri }) {
   const pinchScale = useRef(new Animated.Value(1)).current;
   const lastScale = useRef(1);
   const scale = useRef(Animated.multiply(baseScale, pinchScale)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
 
   const onPinchGestureEvent = Animated.event(
     [{ nativeEvent: { scale: pinchScale } }],
+    { useNativeDriver: true }
+  );
+
+  const onPanGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: translateX, translationY: translateY } }],
     { useNativeDriver: true }
   );
 
@@ -47,6 +55,19 @@ function ImageSlide({ uri }) {
       lastScale.current = nextScale;
       baseScale.setValue(nextScale);
       pinchScale.setValue(1);
+      if (nextScale === 1) {
+        Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+        Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
+      }
+    }
+  };
+
+  const onPanStateChange = (event) => {
+    if (event.nativeEvent.oldState === GestureState.ACTIVE) {
+      if (lastScale.current === 1) {
+        translateX.extractOffset();
+        translateY.extractOffset();
+      }
     }
   };
 
@@ -56,7 +77,7 @@ function ImageSlide({ uri }) {
         <Animated.View style={styles.zoomContent}>
           <Animated.Image
             source={{ uri }}
-            style={[styles.image, { transform: [{ scale }] }]}
+            style={[styles.image, { transform: [{ scale }, { translateX }, { translateY }] }]}
             resizeMode="contain"
           />
         </Animated.View>
