@@ -12,21 +12,20 @@ import DatePickerSheet from '../components/DatePickerSheet';
 export default function PlanScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { plans, currentUser, users } = state;
-  const safeCurrentUser = currentUser || { id: '', friends: [] };
   const [activeTab, setActiveTab] = useState('mine'); // 'mine' | 'friends'
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
-  const myFriendIds = new Set(safeCurrentUser.friends || []);
+  const myFriendIds = new Set(currentUser.friends || []);
 
   const myPlans = useMemo(() => plans
-    .filter(p => p.userId === safeCurrentUser.id)
-    .sort((a, b) => new Date(a.date) - new Date(b.date)), [plans, safeCurrentUser.id]);
+    .filter(p => p.userId === currentUser.id)
+    .sort((a, b) => new Date(a.date) - new Date(b.date)), [plans, currentUser.id]);
 
   const friendPlans = useMemo(() => plans
-    .filter(p => p.userId !== safeCurrentUser.id && myFriendIds.has(p.userId))
-    .sort((a, b) => new Date(a.date) - new Date(b.date)), [plans, safeCurrentUser.id, safeCurrentUser.friends]);
+    .filter(p => p.userId !== currentUser.id && myFriendIds.has(p.userId))
+    .sort((a, b) => new Date(a.date) - new Date(b.date)), [plans, currentUser.id, currentUser.friends]);
 
   const availableDateKeys = useMemo(
     () => [...new Set((activeTab === 'mine' ? myPlans : friendPlans).map(p => toDateKey(p.date)))].sort(),
@@ -78,7 +77,7 @@ export default function PlanScreen({ navigation }) {
   };
 
   const handleDeletePlan = (plan) => {
-    if (!plan || plan.userId !== safeCurrentUser.id) return;
+    if (!plan || plan.userId !== currentUser.id) return;
     Alert.alert('删除规划', '确认删除这条规划？', [
       { text: '取消', style: 'cancel' },
       {
@@ -140,14 +139,6 @@ export default function PlanScreen({ navigation }) {
       </View>
     );
   };
-
-  if (!currentUser?.id) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={styles.emptyText}>正在恢复登录状态...</Text>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>

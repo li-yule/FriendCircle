@@ -70,24 +70,32 @@ function MainTabs() {
   const myKnowledge = (state.knowledge || []).filter(item => item.userId === currentUser?.id);
   const readInteractionIds = new Set(state.notifications?.[currentUser?.id]?.readInteractionIds || []);
 
-  const interactionKeyOf = (interaction) => {
-    const sourceType = interaction?.sourceType || 'unknown';
-    const sourceId = interaction?.sourceId || 'unknown';
-    const commentId = interaction?.id || 'unknown';
-    return `${sourceType}:${sourceId}:${commentId}`;
+  const interactionKeyOf = (sourceType, sourceId, comment) => {
+    return `${sourceType}:${comment?.id || 'unknown'}`;
   };
+
+  const legacyInteractionKeyOf = (sourceType, sourceId, comment) => {
+    const fromUserId = comment?.userId || 'unknown';
+    const createdAt = comment?.createdAt || 'unknown';
+    const text = String(comment?.text || '').trim();
+    return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
+  };
+
+  const isRead = (sourceType, sourceId, comment) =>
+    readInteractionIds.has(interactionKeyOf(sourceType, sourceId, comment)) ||
+    readInteractionIds.has(legacyInteractionKeyOf(sourceType, sourceId, comment));
 
   const unreadPostInteractions = myPosts.reduce((sum, post) => {
     const next = (post.comments || [])
       .filter(comment => comment.userId !== currentUser?.id)
-      .filter(comment => !readInteractionIds.has(interactionKeyOf({ sourceType: 'post', sourceId: post.id, id: comment.id }))).length;
+      .filter(comment => !isRead('post', post.id, comment)).length;
     return sum + next;
   }, 0);
 
   const unreadKnowledgeInteractions = myKnowledge.reduce((sum, item) => {
     const next = (item.comments || [])
       .filter(comment => comment.userId !== currentUser?.id)
-      .filter(comment => !readInteractionIds.has(interactionKeyOf({ sourceType: 'knowledge', sourceId: item.id, id: comment.id }))).length;
+      .filter(comment => !isRead('knowledge', item.id, comment)).length;
     return sum + next;
   }, 0);
 

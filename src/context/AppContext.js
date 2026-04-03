@@ -18,17 +18,11 @@ const LOCAL_MUTATION_MUTE_MS = 2500;
 const AUTH_CACHE_KEY = 'friendcircle_auth_cache_v1';
 const CURRENT_USER_CACHE_KEY = 'friendcircle_current_user_cache_v1';
 const NOTIFICATIONS_CACHE_KEY = 'friendcircle_notifications_cache_v1';
+const STATE_CACHE_KEY = 'friendcircle_state_cache_v1';
 const PLAN_DONE_MARKER_ID = '__plan_done__';
 
 function getNotificationUserCacheKey(userId) {
   return `friendcircle_notifications_cache_${userId}`;
-}
-
-function interactionKeyOf(interaction) {
-  const sourceType = interaction?.sourceType || 'unknown';
-  const sourceId = interaction?.sourceId || 'unknown';
-  const commentId = interaction?.id || 'unknown';
-  return `${sourceType}:${sourceId}:${commentId}`;
 }
 
 const initialState = {
@@ -144,8 +138,8 @@ function normalizeComment(comment) {
   return {
     id: comment?.id || generateId(),
     userId: comment?.userId || comment?.user_id || '',
-    replyToUserId: comment?.replyToUserId || comment?.reply_to_user_id || null,
-    replyToUserName: comment?.replyToUserName || comment?.reply_to_user_name || null,
+    replyToUserId: comment?.replyToUserId || comment?.reply_to_user_id || '',
+    replyToUserName: comment?.replyToUserName || comment?.reply_to_user_name || '',
     text: comment?.text || '',
     images: toUniqueStrings(comment?.images),
     audioFiles: ensureArray(comment?.audioFiles || comment?.audio_files).map(normalizeAudioFile),
@@ -246,7 +240,7 @@ function serializePost(post) {
     images: normalized.images,
     videos: normalized.videos,
     likes: normalized.likes,
-    comments: normalized.comments.map(c => ({ ...c, reply_to_user_id: c.replyToUserId, reply_to_user_name: c.replyToUserName })),
+    comments: normalized.comments,
     created_at: normalized.createdAt,
   };
 }
@@ -284,7 +278,7 @@ function serializeKnowledge(item) {
     audio_files: normalized.audioFiles,
     tags: normalized.tags,
     likes: normalized.likes,
-    comments: normalized.comments.map(c => ({ ...c, reply_to_user_id: c.replyToUserId, reply_to_user_name: c.replyToUserName })),
+    comments: normalized.comments,
     created_at: normalized.createdAt,
   };
 }
@@ -315,6 +309,20 @@ function createEmptyLoadedState(notifications = {}) {
     notifications: normalizeNotifications(notifications),
     currentUser: null,
     loaded: true,
+  };
+}
+
+function serializeStateSnapshot(state) {
+  return {
+    users: ensureArray(state?.users).map(user => ({
+      ...user,
+      password: '',
+    })),
+    currentUser: state?.currentUser || null,
+    posts: ensureArray(state?.posts),
+    plans: ensureArray(state?.plans),
+    knowledge: ensureArray(state?.knowledge),
+    notifications: normalizeNotifications(state?.notifications),
   };
 }
 
@@ -983,19 +991,9 @@ function getFriendlyErrorMessage(error, fallback) {
   return fallback;
 }
 
-async function loadCachedNotifications() {
-  try {
-    const cached = await AsyncStorage.getItem(NOTIFICATIONS_CACHE_KEY);
-    return cached ? JSON.parse(cached) : {};
-  } catch {
-    return {};
-  }
-}
-
 export function AppProvider({ children }) {
   const [state, baseDispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(state);
-  const activeRef = useRef(true);
   const cloudUserIdRef = useRef(null);
   const refreshTimerRef = useRef(null);
   const pendingTablesRef = useRef(new Set());
@@ -1017,140 +1015,217 @@ export function AppProvider({ children }) {
   }, [state.notifications]);
 
   useEffect(() => {
-    if (state.currentUser?.id) {
-      AsyncStorage
-        .setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot(state.currentUser)))
-        .catch(() => {});
-    } else {
-      AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY).catch(() => {});
-    }
-  }, [state.currentUser]);
+    if (!state.loaded) return;
+    const snapshot = serializeStateSnapshot(state);
+    AsyncStorage.setItem(STATE_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
+  }, [state]);
 
-  const hydrate = async (userId) => {
+  useEffect(() => {
     if (!isSupabaseConfigured) {
       baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
-      return;
+      return undefined;
     }
 
-    try {
-      const [cachedUser, cachedNotifications] = await Promise.all([
-        AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
-        AsyncStorage.getItem(NOTIFICATIONS_CACHE_KEY),
-      ]);
+    let active = true;
+    let cachedNotifications = {};
 
-      const notifications = cachedNotifications ? JSON.parse(cachedNotifications) : {};
-      if (cachedUser) {
-        const user = JSON.parse(cachedUser);
-        baseDispatch({ type: 'LOAD_STATE', payload: mergeCurrentUserFast(createEmptyLoadedState(notifications), user) });
+    const loadCachedNotifications = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(NOTIFICATIONS_CACHE_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return normalizeNotifications(parsed);
+      } catch {
+        return {};
       }
+    };
 
-      const loadedState = await fetchCloudState(userId);
-      if (activeRef.current) {
-        baseDispatch({ type: 'LOAD_STATE', payload: { ...loadedState, notifications } });
+    const restoreStateSnapshot = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(STATE_CACHE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        const restored = sanitizeLoadedState(parsed);
+        if (!restored?.currentUser?.id) return false;
+        restored.notifications = {
+          ...normalizeNotifications(cachedNotifications),
+          ...normalizeNotifications(parsed?.notifications),
+        };
+        baseDispatch({ type: 'LOAD_STATE', payload: restored });
+        return true;
+      } catch {
+        return false;
       }
-    } catch (error) {
-      if (activeRef.current) {
-        baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
+    };
+
+    const hydrate = async (userId) => {
+      const snapshot = await fetchCloudState(userId);
+      if (!active) return;
+      cloudUserIdRef.current = userId;
+      const userNotificationsRaw = await AsyncStorage.getItem(getNotificationUserCacheKey(userId));
+      let userNotifications = null;
+      try {
+        userNotifications = userNotificationsRaw ? JSON.parse(userNotificationsRaw) : null;
+      } catch {
+        userNotifications = null;
       }
-    }
-  };
+      snapshot.notifications = {
+        ...normalizeNotifications(cachedNotifications),
+        ...(userNotifications ? { [userId]: userNotifications } : {}),
+      };
+      baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+      const currentUserSnapshot = serializeCurrentUserSnapshot(snapshot.currentUser);
+      if (currentUserSnapshot) {
+        AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot)).catch(() => {});
+      }
+    };
 
-  const restoreLocalAuthState = async () => {
-    if (!isSupabaseConfigured) return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
-    try {
-      const [authRaw, userRaw] = await Promise.all([
-        AsyncStorage.getItem(AUTH_CACHE_KEY),
-        AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
-      ]);
-      const authCache = authRaw ? JSON.parse(authRaw) : null;
-      const cachedUser = userRaw ? JSON.parse(userRaw) : null;
-      if (!authCache?.account || !authCache?.password || !cachedUser?.id) return false;
+    const restoreLocalAuthState = async () => {
+      try {
+        const [authRaw, userRaw] = await Promise.all([
+          AsyncStorage.getItem(AUTH_CACHE_KEY),
+          AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
+        ]);
+        const authCache = authRaw ? JSON.parse(authRaw) : null;
+        const cachedUser = userRaw ? JSON.parse(userRaw) : null;
+        if (!authCache?.account || !authCache?.password || !cachedUser?.id) return false;
 
-      const cachedNotifications = await loadCachedNotifications();
-      const currentState = createEmptyLoadedState(cachedNotifications);
-      const merged = mergeCurrentUserFast(currentState, cachedUser, cachedUser);
-      baseDispatch({ type: 'LOAD_STATE', payload: merged });
-      return true;
-    } catch {
-      return false;
-    }
-  };
+        const currentState = createEmptyLoadedState(cachedNotifications);
+        const merged = mergeCurrentUserFast(currentState, cachedUser, cachedUser);
+        baseDispatch({ type: 'LOAD_STATE', payload: merged });
+        return true;
+      } catch {
+        return false;
+      }
+    };
 
-  const scheduleHydrate = (userId, tables = ['profiles', 'posts', 'plans', 'knowledge'], delay = 450) => {
-    if (!userId) return;
-    ensureArray(tables).forEach(table => pendingTablesRef.current.add(table));
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    refreshTimerRef.current = setTimeout(() => {
-      const pendingTables = Array.from(pendingTablesRef.current);
-      pendingTablesRef.current.clear();
-      if (pendingTables.length === 0) return;
+    const scheduleHydrate = (userId, tables = ['profiles', 'posts', 'plans', 'knowledge'], delay = 450) => {
+      if (!userId) return;
+      ensureArray(tables).forEach(table => pendingTablesRef.current.add(table));
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+      }
+      refreshTimerRef.current = setTimeout(() => {
+        const pendingTables = Array.from(pendingTablesRef.current);
+        pendingTablesRef.current.clear();
+        if (pendingTables.length === 0) return;
 
-      fetchCloudPatch(pendingTables)
-        .then(patch => {
-          if (!activeRef.current) return;
-          baseDispatch({
-            type: 'LOAD_STATE',
-            payload: applyCloudPatch(stateRef.current, patch, userId),
-          });
-        })
-        .catch(() => {
-          if (activeRef.current) {
+        fetchCloudPatch(pendingTables)
+          .then(patch => {
+            if (!active) return;
+            baseDispatch({
+              type: 'LOAD_STATE',
+              payload: applyCloudPatch(stateRef.current, patch, userId),
+            });
+          })
+          .catch(() => {
+          if (active) {
+            // 网络抖动或某个表查询失败时，保留当前登录态，避免闪回登录页
             baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
           }
-        });
-    }, delay);
-  };
-
-  const shouldMuteTableSync = (table) => {
-    const mutedAt = Number(localMutationMuteRef.current?.[table] || 0);
-    return Date.now() - mutedAt < LOCAL_MUTATION_MUTE_MS;
-  };
-
-  const loadCloud = async () => {
-    try {
-      const cachedNotifications = await loadCachedNotifications();
-      const restoredLocally = await restoreLocalAuthState();
-      if (activeRef.current && !restoredLocally) {
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-      }
-
-      const { data } = await supabase.auth.getSession();
-      if (!activeRef.current) return;
-
-      if (data.session?.user) {
-        cloudUserIdRef.current = data.session.user.id;
-        await hydrate(data.session.user.id);
-      } else {
-        const cacheRaw = await AsyncStorage.getItem(AUTH_CACHE_KEY);
-        const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
-        const account = normalizeAccount(cache?.account);
-        const password = String(cache?.password || '');
-
-        if (account && password) {
-          const signInRes = await supabase.auth.signInWithPassword({
-            email: buildAuthEmail(account),
-            password,
           });
-          if (signInRes?.data?.user?.id && activeRef.current) {
-            cloudUserIdRef.current = signInRes.data.user.id;
-            await hydrate(signInRes.data.user.id);
-            return;
-          }
-        }
+      }, delay);
+    };
 
-        if (!restoredLocally && activeRef.current) {
-          cloudUserIdRef.current = null;
+    const shouldMuteTableSync = (table) => {
+      const mutedAt = Number(localMutationMuteRef.current?.[table] || 0);
+      return Date.now() - mutedAt < LOCAL_MUTATION_MUTE_MS;
+    };
+
+    const loadCloud = async () => {
+      try {
+        cachedNotifications = await loadCachedNotifications();
+        const restoredFromSnapshot = await restoreStateSnapshot();
+        const restoredLocally = restoredFromSnapshot || await restoreLocalAuthState();
+        if (active && !restoredLocally) {
           baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
         }
+
+        const { data } = await supabase.auth.getSession();
+        if (!active) return;
+
+        if (data.session?.user) {
+          cloudUserIdRef.current = data.session.user.id;
+          await hydrate(data.session.user.id);
+        } else {
+          // 兜底：进程被系统杀死后如果 session 丢失，尝试使用最近一次成功登录凭据自动恢复
+          const cacheRaw = await AsyncStorage.getItem(AUTH_CACHE_KEY);
+          const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
+          const account = normalizeAccount(cache?.account);
+          const password = String(cache?.password || '');
+
+          if (account && password) {
+            const signInRes = await supabase.auth.signInWithPassword({
+              email: buildAuthEmail(account),
+              password,
+            });
+            if (signInRes?.data?.user?.id) {
+              cloudUserIdRef.current = signInRes.data.user.id;
+              await hydrate(signInRes.data.user.id);
+              return;
+            }
+          }
+
+          if (!restoredLocally) {
+            cloudUserIdRef.current = null;
+            baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+          }
+        }
+      } catch {
+        if (active) {
+          baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
+        }
       }
-    } catch {
-      if (activeRef.current) {
-        baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
+    };
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        cloudUserIdRef.current = session.user.id;
+        scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
+      } else if (active) {
+        cloudUserIdRef.current = null;
+          restoreLocalAuthState().then(restored => {
+            if (!restored) {
+              baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+            }
+          }).catch(() => {
+            baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+          });
       }
-    }
-  };
+    });
+
+    const channel = supabase
+      .channel('friendcircle-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        if (shouldMuteTableSync('profiles')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['profiles']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+        if (shouldMuteTableSync('posts')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['posts']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
+        if (shouldMuteTableSync('plans')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['plans']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
+        if (shouldMuteTableSync('knowledge')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
+      })
+      .subscribe();
+
+    loadCloud();
+
+    return () => {
+      active = false;
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+      pendingTablesRef.current.clear();
+      authListener.subscription.unsubscribe();
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const dispatch = async (action) => {
     if (!isSupabaseConfigured) {
@@ -1190,6 +1265,7 @@ export function AppProvider({ children }) {
             name: currentState.users.find(u => normalizeAccount(u.account || '') === account)?.name || account,
           };
 
+          // 登录成功后先快速进入应用，资料同步放到后台完成，减少“登录中”等待。
           baseDispatch({
             type: 'LOAD_STATE',
             payload: mergeCurrentUserFast(currentState, fallback, fallback),
@@ -1431,8 +1507,6 @@ export function AppProvider({ children }) {
         if (currentUpdate.error || targetUpdate.error) {
           return { ok: false, error: '好友关系更新失败' };
         }
-        baseDispatch(action);
-        return { ok: true };
       } else if (action.type === 'ADD_SUBJECT') {
         markLocalMutation('profiles');
         const subject = action.payload?.trim();
@@ -1442,8 +1516,6 @@ export function AppProvider({ children }) {
           updated_at: new Date().toISOString(),
         }).eq('id', currentUser.id);
         if (error) return { ok: false, error: '新增学科失败' };
-        baseDispatch(action);
-        return { ok: true };
       } else if (action.type === 'REMOVE_SUBJECT') {
         markLocalMutation('profiles');
         const subject = action.payload?.trim();
@@ -1457,8 +1529,6 @@ export function AppProvider({ children }) {
           updated_at: new Date().toISOString(),
         }).eq('id', currentUser.id);
         if (error) return { ok: false, error: '删除学科失败' };
-        baseDispatch(action);
-        return { ok: true };
       } else if (action.type === 'ADD_POST') {
         markLocalMutation('posts');
         const draft = normalizePost(action.payload);
@@ -1536,9 +1606,14 @@ export function AppProvider({ children }) {
         const post = currentState.posts.find(item => item.id === postId);
         if (!post) return { ok: false, error: '动态不存在' };
         const optimisticComment = action.type === 'ADD_COMMENT' ? normalizeComment(action.payload?.comment) : null;
+        let latestComments = post.comments || [];
+        const latestRes = await supabase.from('posts').select('comments').eq('id', postId).maybeSingle();
+        if (!latestRes.error && Array.isArray(latestRes.data?.comments)) {
+          latestComments = latestRes.data.comments.map(normalizeComment);
+        }
         const nextComments = action.type === 'ADD_COMMENT'
-          ? [...(post.comments || []), optimisticComment]
-          : (post.comments || []).filter(comment => comment.id !== action.payload?.commentId);
+          ? [...latestComments, optimisticComment]
+          : latestComments.filter(comment => comment.id !== action.payload?.commentId);
 
         if (action.type === 'ADD_COMMENT') {
           baseDispatch({
@@ -1592,7 +1667,7 @@ export function AppProvider({ children }) {
             }
           : action.type === 'TOGGLE_PLAN_DONE'
             ? { ...plan, done: !plan.done }
-            : { ...plan, ...action.payload };
+          : { ...plan, ...action.payload };
         if (action.type === 'TOGGLE_PLAN_DONE') {
           baseDispatch(action);
         }
@@ -1645,7 +1720,12 @@ export function AppProvider({ children }) {
           images: await uploadAssetList(currentUser.id, action.payload?.comment?.images, 'knowledge/comment-images'),
           audioFiles: await uploadAudioFiles(currentUser.id, action.payload?.comment?.audioFiles, 'knowledge/comment-audio'),
         });
-        const nextComments = [...(item.comments || []), uploadedComment];
+        let latestComments = item.comments || [];
+        const latestRes = await supabase.from('knowledge').select('comments').eq('id', item.id).maybeSingle();
+        if (!latestRes.error && Array.isArray(latestRes.data?.comments)) {
+          latestComments = latestRes.data.comments.map(normalizeComment);
+        }
+        const nextComments = [...latestComments, uploadedComment];
 
         baseDispatch({
           type: 'ADD_KNOWLEDGE_COMMENT',
@@ -1665,75 +1745,15 @@ export function AppProvider({ children }) {
         baseDispatch(action);
         return { ok: true };
       }
+
+      if (['ADD_FRIEND', 'REMOVE_FRIEND', 'ADD_SUBJECT', 'REMOVE_SUBJECT'].includes(action.type)) {
+        baseDispatch(action);
+      }
+      return { ok: true };
     } catch (error) {
       return { ok: false, error: getFriendlyErrorMessage(error, error?.message || '云端同步失败，请检查 Supabase 配置') };
     }
   };
-
-  // 初始化加载
-  useEffect(() => {
-    loadCloud();
-
-    return () => {
-      activeRef.current = false;
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-      pendingTablesRef.current.clear();
-    };
-  }, []);
-
-  // 监听认证状态变化
-  useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        cloudUserIdRef.current = session.user.id;
-        scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
-      } else if (activeRef.current) {
-        cloudUserIdRef.current = null;
-        restoreLocalAuthState().then(restored => {
-          if (!restored && activeRef.current) {
-            loadCachedNotifications().then(cachedNotifications => {
-              baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-            });
-          }
-        }).catch(() => {
-          loadCachedNotifications().then(cachedNotifications => {
-            if (activeRef.current) {
-              baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-            }
-          });
-        });
-      }
-    });
-
-    // 订阅 Supabase 实时更新
-    const channel = supabase
-      .channel('friendcircle-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        if (shouldMuteTableSync('profiles')) return;
-        scheduleHydrate(cloudUserIdRef.current, ['profiles']);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
-        if (shouldMuteTableSync('posts')) return;
-        scheduleHydrate(cloudUserIdRef.current, ['posts']);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
-        if (shouldMuteTableSync('plans')) return;
-        scheduleHydrate(cloudUserIdRef.current, ['plans']);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
-        if (shouldMuteTableSync('knowledge')) return;
-        scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
-      })
-      .subscribe();
-
-    return () => {
-      authListener?.subscription?.unsubscribe?.();
-      supabase.removeChannel(channel);
-    };
-  }, []);
 
   return (
     <AppContext.Provider value={{ state, dispatch, isCloudEnabled: isSupabaseConfigured }}>
@@ -1742,8 +1762,8 @@ export function AppProvider({ children }) {
   );
 }
 
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within AppProvider');
-  return context;
-};
+export function useApp() {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
+}

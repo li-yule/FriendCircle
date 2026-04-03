@@ -36,8 +36,8 @@ function ImageSlide({ uri }) {
   const pinchScale = useRef(new Animated.Value(1)).current;
   const lastScale = useRef(1);
   const scale = useRef(Animated.multiply(baseScale, pinchScale)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
+  const panX = useRef(new Animated.Value(0)).current;
+  const panY = useRef(new Animated.Value(0)).current;
 
   const onPinchGestureEvent = Animated.event(
     [{ nativeEvent: { scale: pinchScale } }],
@@ -45,7 +45,7 @@ function ImageSlide({ uri }) {
   );
 
   const onPanGestureEvent = Animated.event(
-    [{ nativeEvent: { translationX: translateX, translationY: translateY } }],
+    [{ nativeEvent: { translationX: panX, translationY: panY } }],
     { useNativeDriver: true }
   );
 
@@ -56,17 +56,26 @@ function ImageSlide({ uri }) {
       baseScale.setValue(nextScale);
       pinchScale.setValue(1);
       if (nextScale === 1) {
-        Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
-        Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
+        panX.setOffset(0);
+        panX.setValue(0);
+        panY.setOffset(0);
+        panY.setValue(0);
       }
     }
   };
 
   const onPanStateChange = (event) => {
     if (event.nativeEvent.oldState === GestureState.ACTIVE) {
-      if (lastScale.current === 1) {
-        translateX.extractOffset();
-        translateY.extractOffset();
+      if (lastScale.current > 1) {
+        panX.extractOffset();
+        panX.setValue(0);
+        panY.extractOffset();
+        panY.setValue(0);
+      } else {
+        panX.setOffset(0);
+        panX.setValue(0);
+        panY.setOffset(0);
+        panY.setValue(0);
       }
     }
   };
@@ -75,11 +84,15 @@ function ImageSlide({ uri }) {
     <View style={styles.slide}>
       <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
         <Animated.View style={styles.zoomContent}>
-          <Animated.Image
-            source={{ uri }}
-            style={[styles.image, { transform: [{ scale }, { translateX }, { translateY }] }]}
-            resizeMode="contain"
-          />
+          <PanGestureHandler onGestureEvent={onPanGestureEvent} onHandlerStateChange={onPanStateChange}>
+            <Animated.View>
+              <Animated.Image
+                source={{ uri }}
+                style={[styles.image, { transform: [{ translateX: panX }, { translateY: panY }, { scale }] }]}
+                resizeMode="contain"
+              />
+            </Animated.View>
+          </PanGestureHandler>
         </Animated.View>
       </PinchGestureHandler>
     </View>

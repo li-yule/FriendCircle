@@ -9,6 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useApp } from '../context/AppContext';
 import { PinchGestureHandler, State as GestureState } from 'react-native-gesture-handler';
+import { PanGestureHandler } from 'react-native-gesture-handler';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -37,9 +38,16 @@ function ImageSlide({ uri }) {
   const pinchScale = React.useRef(new Animated.Value(1)).current;
   const lastScale = React.useRef(1);
   const scale = React.useRef(Animated.multiply(baseScale, pinchScale)).current;
+  const panX = React.useRef(new Animated.Value(0)).current;
+  const panY = React.useRef(new Animated.Value(0)).current;
 
   const onPinchGestureEvent = Animated.event(
     [{ nativeEvent: { scale: pinchScale } }],
+    { useNativeDriver: true }
+  );
+
+  const onPanGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: panX, translationY: panY } }],
     { useNativeDriver: true }
   );
 
@@ -49,6 +57,28 @@ function ImageSlide({ uri }) {
       lastScale.current = nextScale;
       baseScale.setValue(nextScale);
       pinchScale.setValue(1);
+      if (nextScale === 1) {
+        panX.setOffset(0);
+        panX.setValue(0);
+        panY.setOffset(0);
+        panY.setValue(0);
+      }
+    }
+  };
+
+  const onPanStateChange = (event) => {
+    if (event.nativeEvent.oldState === GestureState.ACTIVE) {
+      if (lastScale.current > 1) {
+        panX.extractOffset();
+        panX.setValue(0);
+        panY.extractOffset();
+        panY.setValue(0);
+      } else {
+        panX.setOffset(0);
+        panX.setValue(0);
+        panY.setOffset(0);
+        panY.setValue(0);
+      }
     }
   };
 
@@ -56,7 +86,11 @@ function ImageSlide({ uri }) {
     <View style={styles.slide}>
       <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
         <Animated.View style={styles.zoomContent}>
-          <Animated.Image source={{ uri }} style={[styles.image, { transform: [{ scale }] }]} resizeMode="contain" />
+          <PanGestureHandler onGestureEvent={onPanGestureEvent} onHandlerStateChange={onPanStateChange}>
+            <Animated.View>
+              <Animated.Image source={{ uri }} style={[styles.image, { transform: [{ translateX: panX }, { translateY: panY }, { scale }] }]} resizeMode="contain" />
+            </Animated.View>
+          </PanGestureHandler>
         </Animated.View>
       </PinchGestureHandler>
     </View>
@@ -229,9 +263,11 @@ export default function KnowledgeMediaViewerScreen({ navigation, route }) {
 
         <View style={styles.knowledgeInfo}>
           <Text style={styles.knowledgeSubject}>{currentKnowledge?.subject}</Text>
-          <Text style={styles.knowledgeQuestion} numberOfLines={2}>
-            {currentKnowledge?.question || '[图片题目]'}
-          </Text>
+          {!!String(currentKnowledge?.question || '').trim() && (
+            <Text style={styles.knowledgeQuestion} numberOfLines={2}>
+              {currentKnowledge?.question}
+            </Text>
+          )}
           <Text style={styles.knowledgeAuthor}>
             {getUserName(currentKnowledge?.userId)}
           </Text>

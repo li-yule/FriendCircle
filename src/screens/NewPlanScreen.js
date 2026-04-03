@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Linking, Modal,
@@ -20,12 +20,14 @@ export default function NewPlanScreen({ navigation }) {
   const [reminderMinute, setReminderMinute] = useState('00');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [timePickerVisible, setTimePickerVisible] = useState(false);
-  const [timePickerPart, setTimePickerPart] = useState('hour'); // 'hour' | 'minute'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [permissionTip, setPermissionTip] = useState('通知权限状态未检测');
   const reminderTime = `${reminderHour}:${reminderMinute}`;
   const hourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
   const minuteOptions = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
+  const ITEM_HEIGHT = 44;
+  const hourScrollRef = useRef(null);
+  const minuteScrollRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -101,11 +103,6 @@ export default function NewPlanScreen({ navigation }) {
 
   const handleSubmit = async () => {
     if (isSubmitting) return;
-
-    if (!currentUser?.id) {
-      Alert.alert('提示', '正在恢复登录状态，请稍后再试');
-      return;
-    }
 
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
@@ -187,18 +184,23 @@ export default function NewPlanScreen({ navigation }) {
     setEnableReminder(true);
   };
 
-  const openTimePicker = (part) => {
-    setTimePickerPart(part);
+  const openTimePicker = () => {
     setTimePickerVisible(true);
+    requestAnimationFrame(() => {
+      const hourIndex = hourOptions.indexOf(reminderHour);
+      const minuteIndex = minuteOptions.indexOf(reminderMinute);
+      if (hourIndex >= 0) {
+        hourScrollRef.current?.scrollTo({ y: hourIndex * ITEM_HEIGHT, animated: false });
+      }
+      if (minuteIndex >= 0) {
+        minuteScrollRef.current?.scrollTo({ y: minuteIndex * ITEM_HEIGHT, animated: false });
+      }
+    });
   };
 
-  const selectTimeValue = (value) => {
-    if (timePickerPart === 'hour') {
-      setReminderHour(value);
-    } else {
-      setReminderMinute(value);
-    }
-    setTimePickerVisible(false);
+  const updateWheelValue = (offsetY, options, setter) => {
+    const index = Math.max(0, Math.min(options.length - 1, Math.round(offsetY / ITEM_HEIGHT)));
+    setter(options[index]);
   };
 
   return (
@@ -270,16 +272,16 @@ export default function NewPlanScreen({ navigation }) {
           {enableReminder && (
             <View style={styles.reminderInputRow}>
               <Ionicons name="alarm-outline" size={16} color="#FF6B6B" />
-              <TouchableOpacity style={styles.timePickerBtn} onPress={() => openTimePicker('hour')}>
+              <TouchableOpacity style={styles.timePickerBtn} onPress={openTimePicker}>
                 <Text style={styles.timePickerText}>{reminderHour}</Text>
               </TouchableOpacity>
               <Text style={styles.timeSeparator}>:</Text>
-              <TouchableOpacity style={styles.timePickerBtn} onPress={() => openTimePicker('minute')}>
+              <TouchableOpacity style={styles.timePickerBtn} onPress={openTimePicker}>
                 <Text style={styles.timePickerText}>{reminderMinute}</Text>
               </TouchableOpacity>
             </View>
           )}
-          <Text style={styles.reminderHint}>{enableReminder ? '点击小时或分钟可修改' : '支持本地提醒，示例：07:30、21:00。'}</Text>
+          <Text style={styles.reminderHint}>支持本地提醒，示例：07:30、21:00。</Text>
           <Text style={styles.reminderPermissionHint}>{permissionTip}</Text>
         </View>
 
@@ -301,25 +303,53 @@ export default function NewPlanScreen({ navigation }) {
       <Modal visible={timePickerVisible} transparent animationType="fade" onRequestClose={() => setTimePickerVisible(false)}>
         <View style={styles.modalMask}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{timePickerPart === 'hour' ? '选择小时' : '选择分钟'}</Text>
-            <ScrollView contentContainerStyle={styles.timeGrid}>
-              {(timePickerPart === 'hour' ? hourOptions : minuteOptions).map(value => (
-                <TouchableOpacity
-                  key={value}
-                  style={[
-                    styles.timeOption,
-                    timePickerPart === 'hour' && reminderHour === value && styles.timeOptionActive,
-                    timePickerPart === 'minute' && reminderMinute === value && styles.timeOptionActive,
-                  ]}
-                  onPress={() => selectTimeValue(value)}
-                >
-                  <Text style={styles.timeOptionText}>{value}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setTimePickerVisible(false)}>
-              <Text style={styles.modalCloseText}>关闭</Text>
-            </TouchableOpacity>
+            <Text style={styles.modalTitle}>选择提醒时间</Text>
+            <View style={styles.wheelWrap}>
+              <View style={styles.wheelHighlight} />
+              <ScrollView
+                ref={hourScrollRef}
+                style={styles.wheelColumn}
+                showsVerticalScrollIndicator={false}
+                snapToInterval={ITEM_HEIGHT}
+                decelerationRate="fast"
+                onMomentumScrollEnd={(event) => updateWheelValue(event.nativeEvent.contentOffset.y, hourOptions, setReminderHour)}
+              >
+                <View style={styles.wheelPadding} />
+                {hourOptions.map(value => (
+                  <View key={`hour_${value}`} style={styles.wheelItem}>
+                    <Text style={[styles.wheelItemText, reminderHour === value && styles.wheelItemTextActive]}>{value}</Text>
+                  </View>
+                ))}
+                <View style={styles.wheelPadding} />
+              </ScrollView>
+
+              <Text style={styles.wheelColon}>:</Text>
+
+              <ScrollView
+                ref={minuteScrollRef}
+                style={styles.wheelColumn}
+                showsVerticalScrollIndicator={false}
+                snapToInterval={ITEM_HEIGHT}
+                decelerationRate="fast"
+                onMomentumScrollEnd={(event) => updateWheelValue(event.nativeEvent.contentOffset.y, minuteOptions, setReminderMinute)}
+              >
+                <View style={styles.wheelPadding} />
+                {minuteOptions.map(value => (
+                  <View key={`minute_${value}`} style={styles.wheelItem}>
+                    <Text style={[styles.wheelItemText, reminderMinute === value && styles.wheelItemTextActive]}>{value}</Text>
+                  </View>
+                ))}
+                <View style={styles.wheelPadding} />
+              </ScrollView>
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalGhostBtn} onPress={() => setTimePickerVisible(false)}>
+                <Text style={styles.modalGhostText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalPrimaryBtn} onPress={() => setTimePickerVisible(false)}>
+                <Text style={styles.modalPrimaryText}>确定</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -455,28 +485,66 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFDF8',
     borderRadius: 18,
     padding: 16,
-    maxHeight: '72%',
+    maxHeight: '78%',
   },
   modalTitle: { fontSize: 16, fontWeight: '700', color: '#2F2A24', marginBottom: 12, textAlign: 'center' },
-  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  timeOption: {
-    width: '22%',
-    paddingVertical: 10,
+  wheelWrap: {
+    height: 220,
+    borderRadius: 14,
+    backgroundColor: '#F2F3F8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  wheelHighlight: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    top: 88,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: '#F2EEE6',
+    backgroundColor: '#FFFFFFCC',
+  },
+  wheelColumn: {
+    width: 92,
+    height: 220,
+  },
+  wheelPadding: { height: 88 },
+  wheelItem: {
+    height: 44,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  timeOptionActive: { backgroundColor: '#C49A4B' },
-  timeOptionText: { color: '#6F655D', fontWeight: '700' },
-  modalCloseBtn: {
-    marginTop: 14,
-    alignSelf: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: '#F6EEDC',
+  wheelItemText: { fontSize: 18, color: '#7E7E89' },
+  wheelItemTextActive: { color: '#2F2A24', fontWeight: '700' },
+  wheelColon: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#2F2A24',
+    marginHorizontal: 14,
   },
-  modalCloseText: { color: '#8A7242', fontWeight: '700' },
+  modalActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  modalGhostBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F2EEE6',
+  },
+  modalGhostText: { color: '#6F655D', fontWeight: '700' },
+  modalPrimaryBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#C49A4B',
+  },
+  modalPrimaryText: { color: '#fff', fontWeight: '700' },
   todayTip: {
     flexDirection: 'row',
     gap: 8,

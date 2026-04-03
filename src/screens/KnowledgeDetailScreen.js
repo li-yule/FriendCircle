@@ -17,7 +17,6 @@ const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '
 export default function KnowledgeDetailScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
   const { currentUser, users } = state;
-  const safeCurrentUser = currentUser || { id: '' };
   const item = route.params?.item;
   // 用实时数据
   const liveItem = state.knowledge.find(k => k.id === item?.id) || item;
@@ -30,29 +29,20 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   const [isRecording, setIsRecording] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
-  useEffect(() => {
-    if (!liveItem) {
-      navigation.goBack();
-    }
-  }, [liveItem, navigation]);
+  if (!liveItem) {
+    navigation.goBack();
+    return null;
+  }
 
-  const author = users.find(u => u.id === liveItem?.userId) || { name: '未知', avatarColor: '#ccc' };
-  const liked = (liveItem?.likes || []).includes(safeCurrentUser.id);
-  const resolveReplyingName = (comment) => {
-    if (comment?.replyToUserId) {
-      const target = users.find(user => user.id === comment.replyToUserId);
-      return target?.name || comment.replyToUserName || '';
-    }
-    return comment.replyToUserName || '';
-  };
+  const author = users.find(u => u.id === liveItem.userId) || { name: '未知', avatarColor: '#ccc' };
+  const liked = (liveItem.likes || []).includes(currentUser.id);
   const siblingKnowledge = (state.knowledge || [])
-    .filter(k => k.subject === liveItem?.subject)
+    .filter(k => k.subject === liveItem.subject)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const siblingIndex = siblingKnowledge.findIndex(k => k.id === liveItem?.id);
+  const siblingIndex = siblingKnowledge.findIndex(k => k.id === liveItem.id);
   const prevKnowledge = siblingIndex >= 0 && siblingIndex < siblingKnowledge.length - 1 ? siblingKnowledge[siblingIndex + 1] : null;
   const nextKnowledge = siblingIndex > 0 ? siblingKnowledge[siblingIndex - 1] : null;
   const knowledgeMediaSections = useMemo(() => {
-    if (!liveItem) return [];
     const sections = [
       ...(liveItem.questionImages || []).map(uri => ({ uri, label: '题目', type: 'image' })),
       ...(liveItem.wrongAnswerImages || []).map(uri => ({ uri, label: '错误答案', type: 'image' })),
@@ -61,7 +51,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
       ...(liveItem.images || []).map(uri => ({ uri, label: '附件', type: 'image' })),
     ];
     return sections;
-  }, [liveItem]);
+  }, [liveItem.correctAnswerImages, liveItem.images, liveItem.questionImages, liveItem.summaryImages, liveItem.wrongAnswerImages]);
 
   useEffect(() => {
     return () => {
@@ -71,23 +61,8 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     };
   }, [recording]);
 
-  if (!currentUser?.id) {
-    return (
-      <View style={styles.container}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#666', fontSize: 14 }}>正在恢复登录状态...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (!liveItem) {
-    return null;
-  }
-
   const handleLike = () => {
-    if (!safeCurrentUser.id) return;
-    dispatch({ type: 'LIKE_KNOWLEDGE', payload: { knowledgeId: liveItem.id, userId: safeCurrentUser.id } });
+    dispatch({ type: 'LIKE_KNOWLEDGE', payload: { knowledgeId: liveItem.id, userId: currentUser.id } });
   };
 
   const openImageViewer = (uri) => {
@@ -205,14 +180,13 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
 
   const handleComment = async () => {
     if (!commentText.trim() && commentImages.length === 0 && commentAudioFiles.length === 0) return;
-    if (!safeCurrentUser.id) return;
     const result = await dispatch({
       type: 'ADD_KNOWLEDGE_COMMENT',
       payload: {
         knowledgeId: liveItem.id,
         comment: {
           id: generateId(),
-          userId: safeCurrentUser.id,
+          userId: currentUser.id,
           replyToUserId: replyTarget?.id || '',
           replyToUserName: replyTarget?.name || '',
           text: commentText.trim(),
@@ -238,7 +212,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   };
 
   const handleDelete = () => {
-    if (liveItem.userId !== safeCurrentUser.id) return;
+    if (liveItem.userId !== currentUser.id) return;
     Alert.alert('删除', '确认删除这道题？', [
       { text: '取消', style: 'cancel' },
       {
@@ -253,7 +227,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   };
 
   const handleToggleType = async () => {
-    if (liveItem.userId !== safeCurrentUser.id) return;
+    if (liveItem.userId !== currentUser.id) return;
     const nextType = (liveItem.type || 'knowledge_point') === 'error_item' ? 'knowledge_point' : 'error_item';
     const result = await dispatch({
       type: 'UPDATE_KNOWLEDGE',
@@ -288,7 +262,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             </Text>
           </View>
         </View>
-        {liveItem.userId === safeCurrentUser.id && (
+        {liveItem.userId === currentUser.id && (
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={handleToggleType} style={styles.typeSwitchBtn}>
               <Ionicons name="swap-horizontal-outline" size={18} color="#666" />
@@ -301,7 +275,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         )}
-        {liveItem.userId !== safeCurrentUser.id && <View style={{ width: 60 }} />}
+        {liveItem.userId !== currentUser.id && <View style={{ width: 60 }} />}
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
@@ -339,11 +313,9 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         {/* 题目 */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>📝 题目</Text>
-          {liveItem.question ? (
+          {String(liveItem.question || '').trim() ? (
             <Text style={styles.questionText}>{liveItem.question}</Text>
-          ) : (
-            <Text style={styles.questionPlaceholder}>这是一道图片题，文字题干未填写。</Text>
-          )}
+          ) : null}
           {liveItem.questionImages?.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
               <View style={styles.imageRow}>
@@ -477,7 +449,10 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
           const hasAudio = (c.audioFiles || []).some(file => Boolean(file?.uri));
           if (!hasText && !hasImages && !hasAudio) return null;
           const cu = users.find(u => u.id === c.userId) || { name: '未知', avatarColor: '#ccc' };
-          const replyingName = resolveReplyingName(c);
+          const rawReplyName = String(c.replyToUserName || '').trim();
+          const replyingName = (rawReplyName && rawReplyName !== '未知' && rawReplyName !== '未知用户')
+            ? rawReplyName
+            : (users.find(u => u.id === c.replyToUserId)?.name || '');
           return (
             <TouchableOpacity
               key={c.id}

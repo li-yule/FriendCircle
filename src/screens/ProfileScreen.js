@@ -14,41 +14,32 @@ import { formatTime, formatDate } from '../utils/helpers';
 export default function ProfileScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { currentUser, users, posts, plans, knowledge } = state;
-  const safeCurrentUser = currentUser || {
-    id: '',
-    name: '',
-    bio: '',
-    avatar: null,
-    friends: [],
-  };
   const [tab, setTab] = useState('posts'); // 'posts' | 'plans' | 'friends'
   const [editing, setEditing] = useState(false);
   const [showInteractions, setShowInteractions] = useState(false);
-  const [showAllInteractions, setShowAllInteractions] = useState(false);
-  const [nameInput, setNameInput] = useState(safeCurrentUser.name || '');
-  const [bioInput, setBioInput] = useState(safeCurrentUser.bio || '');
-  const [avatarInput, setAvatarInput] = useState(safeCurrentUser.avatar || null);
+  const [nameInput, setNameInput] = useState(currentUser.name || '');
+  const [bioInput, setBioInput] = useState(currentUser.bio || '');
+  const [avatarInput, setAvatarInput] = useState(currentUser.avatar || null);
   const [savingProfile, setSavingProfile] = useState(false);
-  const readInteractionIds = new Set(state.notifications?.[safeCurrentUser.id]?.readInteractionIds || []);
+  const readInteractionIds = new Set(state.notifications?.[currentUser.id]?.readInteractionIds || []);
 
-  React.useEffect(() => {
-    setNameInput(safeCurrentUser.name || '');
-    setBioInput(safeCurrentUser.bio || '');
-    setAvatarInput(safeCurrentUser.avatar || null);
-  }, [safeCurrentUser.id, safeCurrentUser.name, safeCurrentUser.bio, safeCurrentUser.avatar]);
-
-  const myPosts = posts.filter(p => p.userId === safeCurrentUser.id);
-  const myPlans = plans.filter(p => p.userId === safeCurrentUser.id);
-  const interactionKeyOf = (interaction) => {
+  const myPosts = posts.filter(p => p.userId === currentUser.id);
+  const myPlans = plans.filter(p => p.userId === currentUser.id);
+  const interactionKeyOf = (interaction) => `${interaction?.sourceType || 'unknown'}:${interaction?.id || 'unknown'}`;
+  const legacyInteractionKeyOf = (interaction) => {
     const sourceType = interaction?.sourceType || 'unknown';
     const sourceId = interaction?.sourceId || 'unknown';
-    const commentId = interaction?.id || 'unknown';
-    return `${sourceType}:${sourceId}:${commentId}`;
+    const fromUserId = interaction?.fromUserId || interaction?.fromUser?.id || 'unknown';
+    const createdAt = interaction?.createdAt || 'unknown';
+    const text = String(interaction?.text || '').trim();
+    return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
   };
+  const isInteractionRead = (interaction) =>
+    readInteractionIds.has(interactionKeyOf(interaction)) || readInteractionIds.has(legacyInteractionKeyOf(interaction));
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
       (post.comments || [])
-        .filter(comment => comment.userId !== safeCurrentUser.id)
+        .filter(comment => comment.userId !== currentUser.id)
         .map(comment => ({
           id: comment.id,
           sourceType: 'post',
@@ -56,17 +47,17 @@ export default function ProfileScreen({ navigation }) {
             fromUserId: comment.userId,
           sourcePreview: post.text || '动态内容',
           fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
-          isReplyToMe: comment.replyToUserId === safeCurrentUser.id,
+          isReplyToMe: comment.replyToUserId === currentUser.id,
           text: comment.text || '',
           createdAt: comment.createdAt,
         }))
     );
 
     const knowledgeInteractions = (knowledge || [])
-      .filter(item => item.userId === safeCurrentUser.id)
+      .filter(item => item.userId === currentUser.id)
       .flatMap(item =>
         (item.comments || [])
-          .filter(comment => comment.userId !== safeCurrentUser.id)
+          .filter(comment => comment.userId !== currentUser.id)
           .map(comment => ({
             id: comment.id,
             sourceType: 'knowledge',
@@ -74,7 +65,7 @@ export default function ProfileScreen({ navigation }) {
             fromUserId: comment.userId,
             sourcePreview: item.question || '知识内容',
             fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
-            isReplyToMe: comment.replyToUserId === safeCurrentUser.id,
+            isReplyToMe: comment.replyToUserId === currentUser.id,
             text: comment.text || '',
             createdAt: comment.createdAt,
           }))
@@ -83,13 +74,12 @@ export default function ProfileScreen({ navigation }) {
     return [...postInteractions, ...knowledgeInteractions]
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       .slice(0, 30);
-  }, [safeCurrentUser.id, knowledge, myPosts, users]);
+  }, [currentUser.id, knowledge, myPosts, users]);
   const unreadInteractions = useMemo(
-    () => incomingInteractions.filter(item => !readInteractionIds.has(interactionKeyOf(item))),
+    () => incomingInteractions.filter(item => !isInteractionRead(item)),
     [incomingInteractions, readInteractionIds]
   );
-  const displayedInteractions = showAllInteractions ? incomingInteractions : unreadInteractions;
-
+  const incomingCommentCount = unreadInteractions.length;
     const myPlanDailyProgress = useMemo(() => {
       const map = new Map();
       myPlans.forEach(plan => {
@@ -109,10 +99,10 @@ export default function ProfileScreen({ navigation }) {
       return Array.from(map.values()).sort((a, b) => new Date(b.latest) - new Date(a.latest));
     }, [myPlans]);
 
-  const myFriends = users.filter(u => (safeCurrentUser.friends || []).includes(u.id));
+  const myFriends = users.filter(u => (currentUser.friends || []).includes(u.id));
   const recommendFriends = users.filter(u => {
-    if (u.id === safeCurrentUser.id) return false;
-    if ((safeCurrentUser.friends || []).includes(u.id)) return false;
+    if (u.id === currentUser.id) return false;
+    if ((currentUser.friends || []).includes(u.id)) return false;
     // 只显示有发布过内容的真实用户
     const userPosts = posts.filter(p => p.userId === u.id);
     const userPlans = plans.filter(p => p.userId === u.id);
@@ -277,10 +267,13 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const openInteraction = async (interaction) => {
-    await dispatch({
-      type: 'MARK_INTERACTION_READ',
-      payload: { userId: safeCurrentUser.id, interactionKey: interactionKeyOf(interaction) },
-    });
+    const keysToMark = [interactionKeyOf(interaction), legacyInteractionKeyOf(interaction)];
+    for (const key of keysToMark) {
+      await dispatch({
+        type: 'MARK_INTERACTION_READ',
+        payload: { userId: currentUser.id, interactionKey: key },
+      });
+    }
 
     if (interaction.sourceType === 'post') {
       navigation.navigate('PostDetail', { postId: interaction.sourceId });
@@ -295,14 +288,6 @@ export default function ProfileScreen({ navigation }) {
   const handleToggleInteractions = () => {
     setShowInteractions(prev => !prev);
   };
-
-  if (!currentUser?.id) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={styles.tipText}>正在恢复登录状态...</Text>
-      </View>
-    );
-  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -402,21 +387,16 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.interactionPanel}>
           <View style={styles.interactionHeader}>
             <Text style={styles.sectionTitle}>互动消息</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-              <TouchableOpacity onPress={() => setShowAllInteractions(prev => !prev)}>
-                <Text style={styles.interactionToggleText}>{showAllInteractions ? '只看未读' : '查看全部'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowInteractions(false)}>
-                <Ionicons name="close" size={18} color="#999" />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity onPress={() => setShowInteractions(false)}>
+              <Ionicons name="close" size={18} color="#999" />
+            </TouchableOpacity>
           </View>
-          {displayedInteractions.length === 0 ? (
-            <Text style={styles.tipText}>{showAllInteractions ? '暂无互动' : '暂无未读互动'}</Text>
-          ) : displayedInteractions.map(item => (
+          {unreadInteractions.length === 0 ? (
+            <Text style={styles.tipText}>暂无互动</Text>
+          ) : unreadInteractions.map(item => (
             <TouchableOpacity key={`${item.sourceType}_${item.id}`} style={styles.interactionItem} onPress={() => openInteraction(item)}>
               <Avatar user={item.fromUser} size={28} />
-              {!readInteractionIds.has(interactionKeyOf(item)) && <View style={styles.unreadDot} />}
+              <View style={styles.unreadDot} />
               <View style={styles.interactionTextWrap}>
                 <Text style={styles.interactionTitle}>{item.fromUser.name}{item.isReplyToMe ? ' 回复了你' : ' 评论了你'}</Text>
                 <Text style={styles.interactionMeta} numberOfLines={1}>
@@ -599,22 +579,16 @@ const styles = StyleSheet.create({
   interactionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   interactionItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
   unreadDot: {
-    position: 'absolute',
-    left: 24,
-    top: 6,
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#FF6B6B',
-    borderWidth: 1,
-    borderColor: '#FFFDF8',
   },
-  interactionTextWrap: { flex: 1, marginLeft: 8 },
+  interactionTextWrap: { flex: 1 },
   interactionTitle: { fontSize: 12, color: '#333', fontWeight: '600' },
   interactionMeta: { fontSize: 11, color: '#9AA5AE', marginTop: 2 },
   interactionContent: { fontSize: 12, color: '#777', marginTop: 2 },
   interactionTime: { fontSize: 11, color: '#BBB' },
-  interactionToggleText: { fontSize: 12, color: '#4ECDC4', fontWeight: '600' },
   sectionTitle: { fontSize: 15, fontWeight: '600', color: '#2F2A24', marginBottom: 12 },
   userList: { flexDirection: 'row', gap: 12 },
   userChip: {

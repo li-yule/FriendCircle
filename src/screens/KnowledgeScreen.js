@@ -120,9 +120,11 @@ export default function KnowledgeScreen({ navigation }) {
                 {(item.type || 'knowledge_point') === 'error_item' ? '错误项' : '学习要点'}
               </Text>
             </View>
-            <Text style={styles.question} numberOfLines={3}>
-              {item.question || (item.questionImages?.length > 0 ? '[图片题目]' : '未填写题目内容')}
-            </Text>
+            {Boolean(String(item.question || '').trim()) && (
+              <Text style={styles.question} numberOfLines={3}>
+                {item.question}
+              </Text>
+            )}
           </View>
 
           {item.questionImages?.length > 0 && (
