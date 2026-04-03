@@ -983,9 +983,19 @@ function getFriendlyErrorMessage(error, fallback) {
   return fallback;
 }
 
+async function loadCachedNotifications() {
+  try {
+    const cached = await AsyncStorage.getItem(NOTIFICATIONS_CACHE_KEY);
+    return cached ? JSON.parse(cached) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function AppProvider({ children }) {
   const [state, baseDispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(state);
+  const activeRef = useRef(true);
   const cloudUserIdRef = useRef(null);
   const refreshTimerRef = useRef(null);
   const pendingTablesRef = useRef(new Set());
@@ -1016,7 +1026,7 @@ export function AppProvider({ children }) {
     }
   }, [state.currentUser]);
 
-  const hydrate = async () => {
+  const hydrate = async (userId) => {
     if (!isSupabaseConfigured()) {
       baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
       return;
@@ -1034,19 +1044,14 @@ export function AppProvider({ children }) {
         baseDispatch({ type: 'LOAD_STATE', payload: mergeCurrentUserFast(createEmptyLoadedState(notifications), user) });
       }
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.user) {
-        if (!cachedUser) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(notifications) });
-        }
-        return;
+      const loadedState = await fetchCloudState(userId);
+      if (activeRef.current) {
+        baseDispatch({ type: 'LOAD_STATE', payload: { ...loadedState, notifications } });
       }
-
-      cloudUserIdRef.current = session.user.id;
-      const loadedState = await fetchCloudState(session.user.id);
-      baseDispatch({ type: 'LOAD_STATE', payload: { ...loadedState, notifications } });
     } catch (error) {
-      baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
+      if (activeRef.current) {
+        baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
+      }
     }
   };
 
@@ -1061,6 +1066,7 @@ export function AppProvider({ children }) {
       const cachedUser = userRaw ? JSON.parse(userRaw) : null;
       if (!authCache?.account || !authCache?.password || !cachedUser?.id) return false;
 
+      const cachedNotifications = await loadCachedNotifications();
       const currentState = createEmptyLoadedState(cachedNotifications);
       const merged = mergeCurrentUserFast(currentState, cachedUser, cachedUser);
       baseDispatch({ type: 'LOAD_STATE', payload: merged });
@@ -1083,15 +1089,14 @@ export function AppProvider({ children }) {
 
       fetchCloudPatch(pendingTables)
         .then(patch => {
-          if (!active) return;
+          if (!activeRef.current) return;
           baseDispatch({
             type: 'LOAD_STATE',
             payload: applyCloudPatch(stateRef.current, patch, userId),
           });
         })
         .catch(() => {
-          if (active) {
-            // 网络抖动或某个表查询失败时，保留当前登录态，避免闪回登录页
+          if (activeRef.current) {
             baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
           }
         });
@@ -1107,18 +1112,17 @@ export function AppProvider({ children }) {
     try {
       const cachedNotifications = await loadCachedNotifications();
       const restoredLocally = await restoreLocalAuthState();
-      if (active && !restoredLocally) {
+      if (activeRef.current && !restoredLocally) {
         baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
       }
 
       const { data } = await supabase.auth.getSession();
-      if (!active) return;
+      if (!activeRef.current) return;
 
       if (data.session?.user) {
         cloudUserIdRef.current = data.session.user.id;
         await hydrate(data.session.user.id);
       } else {
-        // 兜底：进程被系统杀死后如果 session 丢失，尝试使用最近一次成功登录凭据自动恢复
         const cacheRaw = await AsyncStorage.getItem(AUTH_CACHE_KEY);
         const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
         const account = normalizeAccount(cache?.account);
@@ -1129,2480 +1133,617 @@ export function AppProvider({ children }) {
             email: buildAuthEmail(account),
             password,
           });
-          if (signInRes?.data?.user?.id) {
+          if (signInRes?.data?.user?.id && activeRef.current) {
             cloudUserIdRef.current = signInRes.data.user.id;
             await hydrate(signInRes.data.user.id);
             return;
           }
         }
 
-        if (!restoredLocally) {
+        if (!restoredLocally && activeRef.current) {
           cloudUserIdRef.current = null;
           baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
         }
       }
     } catch {
-      if (active) {
+      if (activeRef.current) {
         baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
       }
     }
   };
 
-  const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) {
-      cloudUserIdRef.current = session.user.id;
-      scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
-    } else if (active) {
-      cloudUserIdRef.current = null;
-      restoreLocalAuthState().then(restored => {
-        if (!restored) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+  const dispatch = async (action) => {
+    if (!isSupabaseConfigured()) {
+      return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
+    }
+
+    try {
+      const markLocalMutation = (table) => {
+        localMutationMuteRef.current[table] = Date.now();
+      };
+
+      if (action.type === 'LOGIN') {
+        const account = normalizeAccount(action.payload?.account);
+        const password = (action.payload?.password || '').trim();
+
+        if (!isValidAccount(account)) {
+          return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
         }
-      }).catch(() => {
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-      });
-    }
-  });
 
-  const channel = supabase
-    .channel('friendcircle-sync')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-      if (shouldMuteTableSync('profiles')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['profiles']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
-      if (shouldMuteTableSync('posts')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['posts']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
-      if (shouldMuteTableSync('plans')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['plans']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
-      if (shouldMuteTableSync('knowledge')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
-    })
-    .subscribe();
+        if (!password) {
+          return { ok: false, error: '请输入密码' };
+        }
 
-  loadCloud();
-
-  return () => {
-    active = false;
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    }
-    pendingTablesRef.current.clear();
-    authListener.subscription.unsubscribe();
-    supabase.removeChannel(channel);
-  };
-}
-
-const active = true;
-
-const dispatch = async (action) => {
-  if (!isSupabaseConfigured) {
-    return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
-  }
-
-  try {
-    const markLocalMutation = (table) => {
-      localMutationMuteRef.current[table] = Date.now();
-    };
-
-    if (action.type === 'LOGIN') {
-      const account = normalizeAccount(action.payload?.account);
-      const password = (action.payload?.password || '').trim();
-
-      if (!isValidAccount(account)) {
-        return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
-      }
-
-      if (!password) {
-        return { ok: false, error: '请输入密码' };
-      }
-
-      const signInRes = await supabase.auth.signInWithPassword({
-        email: buildAuthEmail(account),
-        password,
-      });
-
-      if (signInRes.error) return { ok: false, error: getFriendlyErrorMessage(signInRes.error, '登录失败') };
-
-      const authUser = signInRes.data.user;
-      if (authUser?.id) {
-        const currentState = stateRef.current;
-        const fallback = {
-          id: authUser.id,
-          account,
-          name: currentState.users.find(u => normalizeAccount(u.account || '') === account)?.name || account,
-        };
-
-        // 登录成功后先快速进入应用，资料同步放到后台完成，减少“登录中”等待。
-        baseDispatch({
-          type: 'LOAD_STATE',
-          payload: mergeCurrentUserFast(currentState, fallback, fallback),
+        const signInRes = await supabase.auth.signInWithPassword({
+          email: buildAuthEmail(account),
+          password,
         });
 
-        const currentUserSnapshot = serializeCurrentUserSnapshot({
-          ...fallback,
-          bio: currentState.currentUser?.bio || '',
-          avatar: currentState.currentUser?.avatar || null,
-          avatarColor: currentState.currentUser?.avatarColor || pickAvatarColor(authUser.id),
-          friends: currentState.currentUser?.friends || [],
-          subjects: currentState.currentUser?.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
-        });
-        if (currentUserSnapshot) {
-          await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot));
+        if (signInRes.error) return { ok: false, error: getFriendlyErrorMessage(signInRes.error, '登录失败') };
+
+        const authUser = signInRes.data.user;
+        if (authUser?.id) {
+          const currentState = stateRef.current;
+          const fallback = {
+            id: authUser.id,
+            account,
+            name: currentState.users.find(u => normalizeAccount(u.account || '') === account)?.name || account,
+          };
+
+          baseDispatch({
+            type: 'LOAD_STATE',
+            payload: mergeCurrentUserFast(currentState, fallback, fallback),
+          });
+
+          const currentUserSnapshot = serializeCurrentUserSnapshot({
+            ...fallback,
+            bio: currentState.currentUser?.bio || '',
+            avatar: currentState.currentUser?.avatar || null,
+            avatarColor: currentState.currentUser?.avatarColor || pickAvatarColor(authUser.id),
+            friends: currentState.currentUser?.friends || [],
+            subjects: currentState.currentUser?.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
+          });
+          if (currentUserSnapshot) {
+            await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot));
+          }
+
+          supabase
+            .from('profiles')
+            .select('id,account,name,bio,avatar,avatar_color,friends,subjects')
+            .eq('id', authUser.id)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (!data) return;
+              baseDispatch({
+                type: 'LOAD_STATE',
+                payload: mergeCurrentUserFast(stateRef.current, data, fallback),
+              });
+              const snapshot = serializeCurrentUserSnapshot({
+                id: authUser.id,
+                account,
+                name: data.name || fallback.name,
+                bio: data.bio || '',
+                avatar: data.avatar || null,
+                avatarColor: data.avatar_color || pickAvatarColor(authUser.id),
+                friends: data.friends || [],
+                subjects: data.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
+              });
+              if (snapshot) {
+                AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
+              }
+            })
+            .catch(() => {});
+
+          await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
         }
 
-        supabase
-          .from('profiles')
-          .select('id,account,name,bio,avatar,avatar_color,friends,subjects')
-          .eq('id', authUser.id)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (!data) return;
-            baseDispatch({
-              type: 'LOAD_STATE',
-              payload: mergeCurrentUserFast(stateRef.current, data, fallback),
-            });
-            const snapshot = serializeCurrentUserSnapshot({
-              id: authUser.id,
-              account,
-              name: data.name || fallback.name,
-              bio: data.bio || '',
-              avatar: data.avatar || null,
-              avatarColor: data.avatar_color || pickAvatarColor(authUser.id),
-              friends: data.friends || [],
-              subjects: data.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
-            });
-            if (snapshot) {
-              AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
-            }
-          })
-          .catch(() => {});
-
-        await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
+        return { ok: true };
       }
 
-      return { ok: true };
-    }
+      if (action.type === 'REGISTER') {
+        const account = normalizeAccount(action.payload?.account);
+        const password = (action.payload?.password || '').trim();
+        const email = buildAuthEmail(account);
 
-    if (action.type === 'REGISTER') {
-      const account = normalizeAccount(action.payload?.account);
-      const password = (action.payload?.password || '').trim();
-      const email = buildAuthEmail(account);
-
-      if (!isValidAccount(account)) {
-        return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
-      }
-
-      if (password.length < 6) {
-        return { ok: false, error: '密码至少 6 位' };
-      }
-
-      const signUpRes = await supabase.auth.signUp({ email, password });
-      if (signUpRes.error) {
-        return { ok: false, error: getFriendlyErrorMessage(signUpRes.error, '注册失败') };
-      }
-
-      let authUserId = signUpRes.data.user?.id;
-      if (!authUserId) {
-        return { ok: false, error: '注册失败，未获取到云端用户信息' };
-      }
-
-      if (!signUpRes.data.session) {
-        const signInRes = await supabase.auth.signInWithPassword({ email, password });
-        if (signInRes.error) {
-          return { ok: false, error: 'Supabase 当前开启了邮箱确认，请先关闭 Confirm email 后再注册' };
+        if (!isValidAccount(account)) {
+          return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
         }
-        authUserId = signInRes.data.user.id;
-      }
 
-      const profile = serializeProfile({
-        id: authUserId,
-        account,
-        name: action.payload?.name,
-        bio: '',
-        avatar: null,
-        avatarColor: pickAvatarColor(authUserId),
-        friends: [],
-        subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-      });
+        if (password.length < 6) {
+          return { ok: false, error: '密码至少 6 位' };
+        }
 
-      const { error: profileError } = await supabase.from('profiles').upsert(profile);
-      if (profileError) {
-        return { ok: false, error: '注册成功，但创建资料失败，请检查 Supabase 表结构' };
-      }
+        const signUpRes = await supabase.auth.signUp({ email, password });
+        if (signUpRes.error) {
+          return { ok: false, error: getFriendlyErrorMessage(signUpRes.error, '注册失败') };
+        }
 
-      const currentState = stateRef.current;
-      baseDispatch({
-        type: 'LOAD_STATE',
-        payload: mergeCurrentUserFast(currentState, {
+        let authUserId = signUpRes.data.user?.id;
+        if (!authUserId) {
+          return { ok: false, error: '注册失败，未获取到云端用户信息' };
+        }
+
+        if (!signUpRes.data.session) {
+          const signInRes = await supabase.auth.signInWithPassword({ email, password });
+          if (signInRes.error) {
+            return { ok: false, error: 'Supabase 当前开启了邮箱确认，请先关闭 Confirm email 后再注册' };
+          }
+          authUserId = signInRes.data.user.id;
+        }
+
+        const profile = serializeProfile({
           id: authUserId,
           account,
           name: action.payload?.name,
           bio: '',
           avatar: null,
-          avatar_color: pickAvatarColor(authUserId),
+          avatarColor: pickAvatarColor(authUserId),
           friends: [],
           subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-        }, {
+        });
+
+        const { error: profileError } = await supabase.from('profiles').upsert(profile);
+        if (profileError) {
+          return { ok: false, error: '注册成功，但创建资料失败，请检查 Supabase 表结构' };
+        }
+
+        const currentState = stateRef.current;
+        baseDispatch({
+          type: 'LOAD_STATE',
+          payload: mergeCurrentUserFast(currentState, {
+            id: authUserId,
+            account,
+            name: action.payload?.name,
+            bio: '',
+            avatar: null,
+            avatar_color: pickAvatarColor(authUserId),
+            friends: [],
+            subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
+          }, {
+            id: authUserId,
+            account,
+            name: action.payload?.name,
+          }),
+        });
+
+        await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
           id: authUserId,
           account,
           name: action.payload?.name,
-        }),
-      });
+          bio: '',
+          avatar: null,
+          avatarColor: pickAvatarColor(authUserId),
+          friends: [],
+          subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
+        })));
 
-      await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
-        id: authUserId,
-        account,
-        name: action.payload?.name,
-        bio: '',
-        avatar: null,
-        avatarColor: pickAvatarColor(authUserId),
-        friends: [],
-        subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-      })));
+        await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
 
-      await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
-
-      return { ok: true };
-    }
-
-    if (action.type === 'LOGOUT') {
-      const { error } = await supabase.auth.signOut();
-      if (error) return { ok: false, error: '退出登录失败' };
-      await AsyncStorage.removeItem(AUTH_CACHE_KEY);
-      await AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY);
-      baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(stateRef.current.notifications) });
-      return { ok: true };
-    }
-
-    if (action.type === 'MARK_NOTIFICATIONS_READ') {
-      const userId = action.payload?.userId;
-      const currentMap = normalizeNotifications(stateRef.current.notifications);
-      const nextMap = {
-        ...currentMap,
-        [userId]: {
-          ...(currentMap[userId] || {}),
-          commentsReadAt: action.payload?.readAt || new Date().toISOString(),
-        },
-      };
-
-      baseDispatch(action);
-      await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-      if (userId) {
-        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
+        return { ok: true };
       }
-      return { ok: true };
-    }
 
-    if (action.type === 'MARK_INTERACTION_READ') {
-      const userId = action.payload?.userId;
-      const interactionKey = String(action.payload?.interactionKey || '').trim();
-      const currentMap = normalizeNotifications(stateRef.current.notifications);
-      const currentUserNotification = currentMap[userId] || {};
-      const currentReadIds = Array.isArray(currentUserNotification.readInteractionIds)
-        ? currentUserNotification.readInteractionIds
-        : [];
-      const nextReadIds = currentReadIds.includes(interactionKey)
-        ? currentReadIds
-        : [...currentReadIds, interactionKey];
-      const nextMap = {
-        ...currentMap,
-        [userId]: {
-          ...currentUserNotification,
-          readInteractionIds: nextReadIds,
-        },
-      };
-
-      baseDispatch(action);
-      await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-      if (userId) {
-        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
+      if (action.type === 'LOGOUT') {
+        const { error } = await supabase.auth.signOut();
+        if (error) return { ok: false, error: '退出登录失败' };
+        await AsyncStorage.removeItem(AUTH_CACHE_KEY);
+        await AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY);
+        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(stateRef.current.notifications) });
+        return { ok: true };
       }
-      return { ok: true };
-    }
 
-    const currentState = stateRef.current;
-    const currentUser = currentState.currentUser;
-    if (!currentUser) {
-      return { ok: false, error: '请先登录' };
-    }
+      if (action.type === 'MARK_NOTIFICATIONS_READ') {
+        const userId = action.payload?.userId;
+        const currentMap = normalizeNotifications(stateRef.current.notifications);
+        const nextMap = {
+          ...currentMap,
+          [userId]: {
+            ...(currentMap[userId] || {}),
+            commentsReadAt: action.payload?.readAt || new Date().toISOString(),
+          },
+        };
 
-    if (action.type === 'UPDATE_PROFILE') {
-      markLocalMutation('profiles');
-      let avatar = action.payload?.avatar ?? currentUser.avatar ?? null;
-      if (avatar && !isRemoteAsset(avatar)) {
-        avatar = await uploadAssetIfNeeded(currentUser.id, avatar, 'profiles/avatars');
+        baseDispatch(action);
+        await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
+        if (userId) {
+          await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
+        }
+        return { ok: true };
       }
-      const { error } = await supabase.from('profiles').update({
-        name: action.payload?.name?.trim() || currentUser.name,
-        bio: action.payload?.bio?.trim() || '',
-        avatar,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '资料保存失败' };
 
-      baseDispatch({
-        type: 'UPDATE_PROFILE',
-        payload: {
-          ...action.payload,
+      if (action.type === 'MARK_INTERACTION_READ') {
+        const userId = action.payload?.userId;
+        const interactionKey = String(action.payload?.interactionKey || '').trim();
+        const currentMap = normalizeNotifications(stateRef.current.notifications);
+        const currentUserNotification = currentMap[userId] || {};
+        const currentReadIds = Array.isArray(currentUserNotification.readInteractionIds)
+          ? currentUserNotification.readInteractionIds
+          : [];
+        const nextReadIds = currentReadIds.includes(interactionKey)
+          ? currentReadIds
+          : [...currentReadIds, interactionKey];
+        const nextMap = {
+          ...currentMap,
+          [userId]: {
+            ...currentUserNotification,
+            readInteractionIds: nextReadIds,
+          },
+        };
+
+        baseDispatch(action);
+        await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
+        if (userId) {
+          await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
+        }
+        return { ok: true };
+      }
+
+      const currentState = stateRef.current;
+      const currentUser = currentState.currentUser;
+      if (!currentUser) {
+        return { ok: false, error: '请先登录' };
+      }
+
+      if (action.type === 'UPDATE_PROFILE') {
+        markLocalMutation('profiles');
+        let avatar = action.payload?.avatar ?? currentUser.avatar ?? null;
+        if (avatar && !isRemoteAsset(avatar)) {
+          avatar = await uploadAssetIfNeeded(currentUser.id, avatar, 'profiles/avatars');
+        }
+        const { error } = await supabase.from('profiles').update({
+          name: action.payload?.name?.trim() || currentUser.name,
+          bio: action.payload?.bio?.trim() || '',
           avatar,
-        },
-      });
-      AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
-        ...currentUser,
-        name: action.payload?.name?.trim() || currentUser.name,
-        bio: action.payload?.bio?.trim() || '',
-        avatar,
-      }))).catch(() => {});
-      return { ok: true };
-    } else if (action.type === 'ADD_FRIEND' || action.type === 'REMOVE_FRIEND') {
-      markLocalMutation('profiles');
-      const targetUserId = action.payload;
-      const targetUser = currentState.users.find(user => user.id === targetUserId);
-      if (!targetUser) return { ok: false, error: '未找到该用户' };
+          updated_at: new Date().toISOString(),
+        }).eq('id', currentUser.id);
+        if (error) return { ok: false, error: '资料保存失败' };
 
-      const nextCurrentFriends = action.type === 'ADD_FRIEND'
-        ? toUniqueStrings([...(currentUser.friends || []), targetUserId])
-        : (currentUser.friends || []).filter(id => id !== targetUserId);
-      const nextTargetFriends = action.type === 'ADD_FRIEND'
-        ? toUniqueStrings([...(targetUser.friends || []), currentUser.id])
-        : (targetUser.friends || []).filter(id => id !== currentUser.id);
-
-      const [currentUpdate, targetUpdate] = await Promise.all([
-        supabase.from('profiles').update({ friends: nextCurrentFriends, updated_at: new Date().toISOString() }).eq('id', currentUser.id),
-        supabase.from('profiles').update({ friends: nextTargetFriends, updated_at: new Date().toISOString() }).eq('id', targetUserId),
-      ]);
-      if (currentUpdate.error || targetUpdate.error) {
-        return { ok: false, error: '好友关系更新失败' };
-      }
-    } else if (action.type === 'ADD_SUBJECT') {
-      markLocalMutation('profiles');
-      const subject = action.payload?.trim();
-      const nextSubjects = toUniqueStrings([...(currentUser.subjects || []), subject]);
-      const { error } = await supabase.from('profiles').update({
-        subjects: nextSubjects,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '新增学科失败' };
-    } else if (action.type === 'REMOVE_SUBJECT') {
-      markLocalMutation('profiles');
-      const subject = action.payload?.trim();
-      const currentSubjects = currentUser.subjects || [];
-      if (currentSubjects.length <= 1) {
-        return { ok: false, error: '至少保留一个学科' };
-      }
-      const nextSubjects = currentSubjects.filter(item => item !== subject);
-      const { error } = await supabase.from('profiles').update({
-        subjects: nextSubjects,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '删除学科失败' };
-    } else if (action.type === 'ADD_POST') {
-      markLocalMutation('posts');
-      const draft = normalizePost(action.payload);
-      const hasMedia = (draft.images || []).length > 0 || (draft.videos || []).length > 0;
-
-      if (hasMedia) {
-        const optimistic = normalizePost({
-          ...draft,
-          uploadStatus: 'uploading',
-          uploadError: '',
-        });
-
-        baseDispatch({ type: 'ADD_POST', payload: optimistic });
-
-        (async () => {
-          try {
-            const uploaded = await preparePostPayload(currentUser.id, draft);
-            const { error } = await supabase.from('posts').insert(serializePost(uploaded));
-            if (error) throw error;
-
-            baseDispatch({
-              type: 'PATCH_POST_LOCAL',
-              payload: {
-                postId: optimistic.id,
-                changes: {
-                  ...uploaded,
-                  uploadStatus: 'done',
-                  uploadError: '',
-                },
-              },
-            });
-          } catch (error) {
-            baseDispatch({
-              type: 'PATCH_POST_LOCAL',
-              payload: {
-                postId: optimistic.id,
-                changes: {
-                  uploadStatus: 'failed',
-                  uploadError: getFriendlyErrorMessage(error, '上传失败，请重试或删除后重发'),
-                },
-              },
-            });
-          }
-        })();
-
-        return { ok: true, async: true };
-      }
-
-      const payload = await preparePostPayload(currentUser.id, draft);
-      const { error } = await supabase.from('posts').insert(serializePost(payload));
-      if (error) return { ok: false, error: '发布动态失败' };
-      baseDispatch({ type: 'ADD_POST', payload: { ...payload, uploadStatus: 'done' } });
-      return { ok: true };
-    } else if (action.type === 'DELETE_POST') {
-      markLocalMutation('posts');
-      const { error } = await supabase.from('posts').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除动态失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'LIKE_POST') {
-      markLocalMutation('posts');
-      const post = currentState.posts.find(item => item.id === action.payload?.postId);
-      if (!post) return { ok: false, error: '动态不存在' };
-      const liked = (post.likes || []).includes(action.payload?.userId);
-      const nextLikes = liked
-        ? (post.likes || []).filter(id => id !== action.payload?.userId)
-        : [...(post.likes || []), action.payload?.userId];
-      const { error } = await supabase.from('posts').update({ likes: nextLikes }).eq('id', post.id);
-      if (error) return { ok: false, error: '点赞失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'ADD_COMMENT' || action.type === 'DELETE_COMMENT') {
-      markLocalMutation('posts');
-      const postId = action.payload?.postId;
-      const post = currentState.posts.find(item => item.id === postId);
-      if (!post) return { ok: false, error: '动态不存在' };
-      const optimisticComment = action.type === 'ADD_COMMENT' ? normalizeComment(action.payload?.comment) : null;
-      const nextComments = action.type === 'ADD_COMMENT'
-        ? [...(post.comments || []), optimisticComment]
-        : (post.comments || []).filter(comment => comment.id !== action.payload?.commentId);
-
-      if (action.type === 'ADD_COMMENT') {
         baseDispatch({
-          type: 'ADD_COMMENT',
+          type: 'UPDATE_PROFILE',
           payload: {
-            postId,
-            comment: optimisticComment,
+            ...action.payload,
+            avatar,
           },
         });
-      }
-
-      const { error } = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
-      if (error) {
-        if (action.type === 'ADD_COMMENT' && optimisticComment?.id) {
-          baseDispatch({ type: 'DELETE_COMMENT', payload: { postId, commentId: optimisticComment.id } });
-        }
-        return { ok: false, error: '评论更新失败' };
-      }
-
-      if (action.type === 'DELETE_COMMENT') {
-        baseDispatch(action);
-      }
-      return { ok: true };
-    } else if (action.type === 'ADD_PLAN') {
-      markLocalMutation('plans');
-      const { error } = await supabase.from('plans').insert(serializePlan(action.payload));
-      if (error) return { ok: false, error: '发布规划失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'DELETE_PLAN') {
-      markLocalMutation('plans');
-      const { error } = await supabase.from('plans').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除规划失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'TOGGLE_PLAN_TASK' || action.type === 'UPDATE_PLAN' || action.type === 'TOGGLE_PLAN_DONE') {
-      markLocalMutation('plans');
-      const planId = action.type === 'TOGGLE_PLAN_TASK'
-        ? action.payload?.planId
-        : action.type === 'TOGGLE_PLAN_DONE'
-          ? action.payload?.planId
-          : action.payload?.id;
-      const plan = currentState.plans.find(item => item.id === planId);
-      if (!plan) return { ok: false, error: '规划不存在' };
-      const mergedPlan = action.type === 'TOGGLE_PLAN_TASK'
-        ? {
-            ...plan,
-            tasks: (plan.tasks || []).map(task =>
-              task.id === action.payload?.taskId ? { ...task, done: !task.done } : task
-            ),
-          }
-        : action.type === 'TOGGLE_PLAN_DONE'
-          ? { ...plan, done: !plan.done }
-          : { ...plan, ...action.payload };
-      if (action.type === 'TOGGLE_PLAN_DONE') {
-        baseDispatch(action);
-      }
-      const { error } = await supabase.from('plans').update(serializePlan(mergedPlan)).eq('id', planId);
-      if (error) return { ok: false, error: '规划更新失败' };
-      if (action.type !== 'TOGGLE_PLAN_DONE') {
-        baseDispatch(action);
-      }
-      return { ok: true };
-    } else if (action.type === 'ADD_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const payload = await prepareKnowledgePayload(currentUser.id, action.payload);
-      const { error } = await supabase.from('knowledge').insert(serializeKnowledge(payload));
-      if (error) return { ok: false, error: '保存错题失败' };
-      baseDispatch({ type: 'ADD_KNOWLEDGE', payload });
-      return { ok: true };
-    } else if (action.type === 'UPDATE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const existing = currentState.knowledge.find(item => item.id === action.payload?.id);
-      if (!existing) return { ok: false, error: '错题不存在' };
-      const payload = await prepareKnowledgePayload(currentUser.id, { ...existing, ...action.payload });
-      const { error } = await supabase.from('knowledge').update(serializeKnowledge(payload)).eq('id', payload.id);
-      if (error) return { ok: false, error: '更新错题失败' };
-      baseDispatch({ type: 'UPDATE_KNOWLEDGE', payload });
-      return { ok: true };
-    } else if (action.type === 'DELETE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const { error } = await supabase.from('knowledge').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除错题失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'LIKE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
-      if (!item) return { ok: false, error: '错题不存在' };
-      const liked = (item.likes || []).includes(action.payload?.userId);
-      const nextLikes = liked
-        ? (item.likes || []).filter(id => id !== action.payload?.userId)
-        : [...(item.likes || []), action.payload?.userId];
-      const { error } = await supabase.from('knowledge').update({ likes: nextLikes }).eq('id', item.id);
-      if (error) return { ok: false, error: '点赞失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'ADD_KNOWLEDGE_COMMENT') {
-      markLocalMutation('knowledge');
-      const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
-      if (!item) return { ok: false, error: '错题不存在' };
-      const uploadedComment = normalizeComment({
-        ...action.payload?.comment,
-        images: await uploadAssetList(currentUser.id, action.payload?.comment?.images, 'knowledge/comment-images'),
-        audioFiles: await uploadAudioFiles(currentUser.id, action.payload?.comment?.audioFiles, 'knowledge/comment-audio'),
-      });
-      const nextComments = [...(item.comments || []), uploadedComment];
-
-      baseDispatch({
-        type: 'ADD_KNOWLEDGE_COMMENT',
-        payload: {
-          knowledgeId: item.id,
-          comment: uploadedComment,
-        },
-      });
-
-      const { error } = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
-      if (error) {
-        baseDispatch({ type: 'DELETE_KNOWLEDGE_COMMENT', payload: { knowledgeId: item.id, commentId: uploadedComment.id } });
-        return { ok: false, error: '评论失败' };
-      }
-      return { ok: true };
-    } else {
-      baseDispatch(action);
-      return { ok: true };
-    }
-
-    if (['ADD_FRIEND', 'REMOVE_FRIEND', 'ADD_SUBJECT', 'REMOVE_SUBJECT'].includes(action.type)) {
-      baseDispatch(action);
-    }
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: getFriendlyErrorMessage(error, error?.message || '云端同步失败，请检查 Supabase 配置') };
-  }
-};
-
-export function AppProvider({ children }) {
-  const [state, baseDispatch] = useReducer(reducer, initialState);
-  const stateRef = useRef(state);
-  const cloudUserIdRef = useRef(null);
-  const refreshTimerRef = useRef(null);
-  const pendingTablesRef = useRef(new Set());
-  const localMutationMuteRef = useRef({
-    profiles: 0,
-    posts: 0,
-    plans: 0,
-    knowledge: 0,
-  });
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-  useEffect(() => {
-    AsyncStorage
-      .setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(normalizeNotifications(state.notifications)))
-      .catch(() => {});
-  }, [state.notifications]);
-
-  useEffect(() => {
-    if (state.currentUser?.id) {
-      AsyncStorage
-        .setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot(state.currentUser)))
-        .catch(() => {});
-    } else {
-      AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY).catch(() => {});
-    }
-  }, [state.currentUser]);
-
-  const hydrate = async () => {
-    if (!isSupabaseConfigured()) {
-      baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
-      return;
-    }
-
-    try {
-      const [cachedUser, cachedNotifications] = await Promise.all([
-        AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
-        AsyncStorage.getItem(NOTIFICATIONS_CACHE_KEY),
-      ]);
-
-      const notifications = cachedNotifications ? JSON.parse(cachedNotifications) : {};
-      if (cachedUser) {
-        const user = JSON.parse(cachedUser);
-        baseDispatch({ type: 'LOAD_STATE', payload: mergeCurrentUserFast(createEmptyLoadedState(notifications), user) });
-      }
-
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.user) {
-        if (!cachedUser) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(notifications) });
-        }
-        return;
-      }
-
-      cloudUserIdRef.current = session.user.id;
-      const loadedState = await fetchCloudState(session.user.id);
-      baseDispatch({ type: 'LOAD_STATE', payload: { ...loadedState, notifications } });
-    } catch (error) {
-      baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-    }
-  };
-
-  const restoreLocalAuthState = async () => {
-    if (!isSupabaseConfigured()) return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
-    try {
-      const [authRaw, userRaw] = await Promise.all([
-        AsyncStorage.getItem(AUTH_CACHE_KEY),
-        AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
-      ]);
-      const authCache = authRaw ? JSON.parse(authRaw) : null;
-      const cachedUser = userRaw ? JSON.parse(userRaw) : null;
-      if (!authCache?.account || !authCache?.password || !cachedUser?.id) return false;
-
-      const currentState = createEmptyLoadedState(cachedNotifications);
-      const merged = mergeCurrentUserFast(currentState, cachedUser, cachedUser);
-      baseDispatch({ type: 'LOAD_STATE', payload: merged });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const scheduleHydrate = (userId, tables = ['profiles', 'posts', 'plans', 'knowledge'], delay = 450) => {
-    if (!userId) return;
-    ensureArray(tables).forEach(table => pendingTablesRef.current.add(table));
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    refreshTimerRef.current = setTimeout(() => {
-      const pendingTables = Array.from(pendingTablesRef.current);
-      pendingTablesRef.current.clear();
-      if (pendingTables.length === 0) return;
-
-      fetchCloudPatch(pendingTables)
-        .then(patch => {
-          if (!active) return;
-          baseDispatch({
-            type: 'LOAD_STATE',
-            payload: applyCloudPatch(stateRef.current, patch, userId),
-          });
-        })
-        .catch(() => {
-          if (active) {
-            // 网络抖动或某个表查询失败时，保留当前登录态，避免闪回登录页
-            baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-          }
-        });
-    }, delay);
-  };
-
-  const shouldMuteTableSync = (table) => {
-    const mutedAt = Number(localMutationMuteRef.current?.[table] || 0);
-    return Date.now() - mutedAt < LOCAL_MUTATION_MUTE_MS;
-  };
-
-  const loadCloud = async () => {
-    try {
-      const cachedNotifications = await loadCachedNotifications();
-      const restoredLocally = await restoreLocalAuthState();
-      if (active && !restoredLocally) {
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-      }
-
-      const { data } = await supabase.auth.getSession();
-      if (!active) return;
-
-      if (data.session?.user) {
-        cloudUserIdRef.current = data.session.user.id;
-        await hydrate(data.session.user.id);
-      } else {
-        // 兜底：进程被系统杀死后如果 session 丢失，尝试使用最近一次成功登录凭据自动恢复
-        const cacheRaw = await AsyncStorage.getItem(AUTH_CACHE_KEY);
-        const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
-        const account = normalizeAccount(cache?.account);
-        const password = String(cache?.password || '');
-
-        if (account && password) {
-          const signInRes = await supabase.auth.signInWithPassword({
-            email: buildAuthEmail(account),
-            password,
-          });
-          if (signInRes?.data?.user?.id) {
-            cloudUserIdRef.current = signInRes.data.user.id;
-            await hydrate(signInRes.data.user.id);
-            return;
-          }
-        }
-
-        if (!restoredLocally) {
-          cloudUserIdRef.current = null;
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-        }
-      }
-    } catch {
-      if (active) {
-        baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-      }
-    }
-  };
-
-  const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) {
-      cloudUserIdRef.current = session.user.id;
-      scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
-    } else if (active) {
-      cloudUserIdRef.current = null;
-      restoreLocalAuthState().then(restored => {
-        if (!restored) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-        }
-      }).catch(() => {
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-      });
-    }
-  });
-
-  const channel = supabase
-    .channel('friendcircle-sync')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-      if (shouldMuteTableSync('profiles')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['profiles']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
-      if (shouldMuteTableSync('posts')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['posts']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
-      if (shouldMuteTableSync('plans')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['plans']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
-      if (shouldMuteTableSync('knowledge')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
-    })
-    .subscribe();
-
-  loadCloud();
-
-  return () => {
-    active = false;
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    }
-    pendingTablesRef.current.clear();
-    authListener.subscription.unsubscribe();
-    supabase.removeChannel(channel);
-  };
-}
-
-const active = true;
-
-const dispatch = async (action) => {
-  if (!isSupabaseConfigured) {
-    return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
-  }
-
-  try {
-    const markLocalMutation = (table) => {
-      localMutationMuteRef.current[table] = Date.now();
-    };
-
-    if (action.type === 'LOGIN') {
-      const account = normalizeAccount(action.payload?.account);
-      const password = (action.payload?.password || '').trim();
-
-      if (!isValidAccount(account)) {
-        return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
-      }
-
-      if (!password) {
-        return { ok: false, error: '请输入密码' };
-      }
-
-      const signInRes = await supabase.auth.signInWithPassword({
-        email: buildAuthEmail(account),
-        password,
-      });
-
-      if (signInRes.error) return { ok: false, error: getFriendlyErrorMessage(signInRes.error, '登录失败') };
-
-      const authUser = signInRes.data.user;
-      if (authUser?.id) {
-        const currentState = stateRef.current;
-        const fallback = {
-          id: authUser.id,
-          account,
-          name: currentState.users.find(u => normalizeAccount(u.account || '') === account)?.name || account,
-        };
-
-        // 登录成功后先快速进入应用，资料同步放到后台完成，减少“登录中”等待。
-        baseDispatch({
-          type: 'LOAD_STATE',
-          payload: mergeCurrentUserFast(currentState, fallback, fallback),
-        });
-
-        const currentUserSnapshot = serializeCurrentUserSnapshot({
-          ...fallback,
-          bio: currentState.currentUser?.bio || '',
-          avatar: currentState.currentUser?.avatar || null,
-          avatarColor: currentState.currentUser?.avatarColor || pickAvatarColor(authUser.id),
-          friends: currentState.currentUser?.friends || [],
-          subjects: currentState.currentUser?.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
-        });
-        if (currentUserSnapshot) {
-          await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot));
-        }
-
-        supabase
-          .from('profiles')
-          .select('id,account,name,bio,avatar,avatar_color,friends,subjects')
-          .eq('id', authUser.id)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (!data) return;
-            baseDispatch({
-              type: 'LOAD_STATE',
-              payload: mergeCurrentUserFast(stateRef.current, data, fallback),
-            });
-            const snapshot = serializeCurrentUserSnapshot({
-              id: authUser.id,
-              account,
-              name: data.name || fallback.name,
-              bio: data.bio || '',
-              avatar: data.avatar || null,
-              avatarColor: data.avatar_color || pickAvatarColor(authUser.id),
-              friends: data.friends || [],
-              subjects: data.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
-            });
-            if (snapshot) {
-              AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
-            }
-          })
-          .catch(() => {});
-
-        await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
-      }
-
-      return { ok: true };
-    }
-
-    if (action.type === 'REGISTER') {
-      const account = normalizeAccount(action.payload?.account);
-      const password = (action.payload?.password || '').trim();
-      const email = buildAuthEmail(account);
-
-      if (!isValidAccount(account)) {
-        return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
-      }
-
-      if (password.length < 6) {
-        return { ok: false, error: '密码至少 6 位' };
-      }
-
-      const signUpRes = await supabase.auth.signUp({ email, password });
-      if (signUpRes.error) {
-        return { ok: false, error: getFriendlyErrorMessage(signUpRes.error, '注册失败') };
-      }
-
-      let authUserId = signUpRes.data.user?.id;
-      if (!authUserId) {
-        return { ok: false, error: '注册失败，未获取到云端用户信息' };
-      }
-
-      if (!signUpRes.data.session) {
-        const signInRes = await supabase.auth.signInWithPassword({ email, password });
-        if (signInRes.error) {
-          return { ok: false, error: 'Supabase 当前开启了邮箱确认，请先关闭 Confirm email 后再注册' };
-        }
-        authUserId = signInRes.data.user.id;
-      }
-
-      const profile = serializeProfile({
-        id: authUserId,
-        account,
-        name: action.payload?.name,
-        bio: '',
-        avatar: null,
-        avatarColor: pickAvatarColor(authUserId),
-        friends: [],
-        subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-      });
-
-      const { error: profileError } = await supabase.from('profiles').upsert(profile);
-      if (profileError) {
-        return { ok: false, error: '注册成功，但创建资料失败，请检查 Supabase 表结构' };
-      }
-
-      const currentState = stateRef.current;
-      baseDispatch({
-        type: 'LOAD_STATE',
-        payload: mergeCurrentUserFast(currentState, {
-          id: authUserId,
-          account,
-          name: action.payload?.name,
-          bio: '',
-          avatar: null,
-          avatar_color: pickAvatarColor(authUserId),
-          friends: [],
-          subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-        }, {
-          id: authUserId,
-          account,
-          name: action.payload?.name,
-        }),
-      });
-
-      await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
-        id: authUserId,
-        account,
-        name: action.payload?.name,
-        bio: '',
-        avatar: null,
-        avatarColor: pickAvatarColor(authUserId),
-        friends: [],
-        subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-      })));
-
-      await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
-
-      return { ok: true };
-    }
-
-    if (action.type === 'LOGOUT') {
-      const { error } = await supabase.auth.signOut();
-      if (error) return { ok: false, error: '退出登录失败' };
-      await AsyncStorage.removeItem(AUTH_CACHE_KEY);
-      await AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY);
-      baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(stateRef.current.notifications) });
-      return { ok: true };
-    }
-
-    if (action.type === 'MARK_NOTIFICATIONS_READ') {
-      const userId = action.payload?.userId;
-      const currentMap = normalizeNotifications(stateRef.current.notifications);
-      const nextMap = {
-        ...currentMap,
-        [userId]: {
-          ...(currentMap[userId] || {}),
-          commentsReadAt: action.payload?.readAt || new Date().toISOString(),
-        },
-      };
-
-      baseDispatch(action);
-      await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-      if (userId) {
-        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
-      }
-      return { ok: true };
-    }
-
-    if (action.type === 'MARK_INTERACTION_READ') {
-      const userId = action.payload?.userId;
-      const interactionKey = String(action.payload?.interactionKey || '').trim();
-      const currentMap = normalizeNotifications(stateRef.current.notifications);
-      const currentUserNotification = currentMap[userId] || {};
-      const currentReadIds = Array.isArray(currentUserNotification.readInteractionIds)
-        ? currentUserNotification.readInteractionIds
-        : [];
-      const nextReadIds = currentReadIds.includes(interactionKey)
-        ? currentReadIds
-        : [...currentReadIds, interactionKey];
-      const nextMap = {
-        ...currentMap,
-        [userId]: {
-          ...currentUserNotification,
-          readInteractionIds: nextReadIds,
-        },
-      };
-
-      baseDispatch(action);
-      await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-      if (userId) {
-        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
-      }
-      return { ok: true };
-    }
-
-    const currentState = stateRef.current;
-    const currentUser = currentState.currentUser;
-    if (!currentUser) {
-      return { ok: false, error: '请先登录' };
-    }
-
-    if (action.type === 'UPDATE_PROFILE') {
-      markLocalMutation('profiles');
-      let avatar = action.payload?.avatar ?? currentUser.avatar ?? null;
-      if (avatar && !isRemoteAsset(avatar)) {
-        avatar = await uploadAssetIfNeeded(currentUser.id, avatar, 'profiles/avatars');
-      }
-      const { error } = await supabase.from('profiles').update({
-        name: action.payload?.name?.trim() || currentUser.name,
-        bio: action.payload?.bio?.trim() || '',
-        avatar,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '资料保存失败' };
-
-      baseDispatch({
-        type: 'UPDATE_PROFILE',
-        payload: {
-          ...action.payload,
+        AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
+          ...currentUser,
+          name: action.payload?.name?.trim() || currentUser.name,
+          bio: action.payload?.bio?.trim() || '',
           avatar,
-        },
-      });
-      AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
-        ...currentUser,
-        name: action.payload?.name?.trim() || currentUser.name,
-        bio: action.payload?.bio?.trim() || '',
-        avatar,
-      }))).catch(() => {});
-      return { ok: true };
-    } else if (action.type === 'ADD_FRIEND' || action.type === 'REMOVE_FRIEND') {
-      markLocalMutation('profiles');
-      const targetUserId = action.payload;
-      const targetUser = currentState.users.find(user => user.id === targetUserId);
-      if (!targetUser) return { ok: false, error: '未找到该用户' };
+        }))).catch(() => {});
+        return { ok: true };
+      } else if (action.type === 'ADD_FRIEND' || action.type === 'REMOVE_FRIEND') {
+        markLocalMutation('profiles');
+        const targetUserId = action.payload;
+        const targetUser = currentState.users.find(user => user.id === targetUserId);
+        if (!targetUser) return { ok: false, error: '未找到该用户' };
 
-      const nextCurrentFriends = action.type === 'ADD_FRIEND'
-        ? toUniqueStrings([...(currentUser.friends || []), targetUserId])
-        : (currentUser.friends || []).filter(id => id !== targetUserId);
-      const nextTargetFriends = action.type === 'ADD_FRIEND'
-        ? toUniqueStrings([...(targetUser.friends || []), currentUser.id])
-        : (targetUser.friends || []).filter(id => id !== currentUser.id);
+        const nextCurrentFriends = action.type === 'ADD_FRIEND'
+          ? toUniqueStrings([...(currentUser.friends || []), targetUserId])
+          : (currentUser.friends || []).filter(id => id !== targetUserId);
+        const nextTargetFriends = action.type === 'ADD_FRIEND'
+          ? toUniqueStrings([...(targetUser.friends || []), currentUser.id])
+          : (targetUser.friends || []).filter(id => id !== currentUser.id);
 
-      const [currentUpdate, targetUpdate] = await Promise.all([
-        supabase.from('profiles').update({ friends: nextCurrentFriends, updated_at: new Date().toISOString() }).eq('id', currentUser.id),
-        supabase.from('profiles').update({ friends: nextTargetFriends, updated_at: new Date().toISOString() }).eq('id', targetUserId),
-      ]);
-      if (currentUpdate.error || targetUpdate.error) {
-        return { ok: false, error: '好友关系更新失败' };
-      }
-    } else if (action.type === 'ADD_SUBJECT') {
-      markLocalMutation('profiles');
-      const subject = action.payload?.trim();
-      const nextSubjects = toUniqueStrings([...(currentUser.subjects || []), subject]);
-      const { error } = await supabase.from('profiles').update({
-        subjects: nextSubjects,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '新增学科失败' };
-    } else if (action.type === 'REMOVE_SUBJECT') {
-      markLocalMutation('profiles');
-      const subject = action.payload?.trim();
-      const currentSubjects = currentUser.subjects || [];
-      if (currentSubjects.length <= 1) {
-        return { ok: false, error: '至少保留一个学科' };
-      }
-      const nextSubjects = currentSubjects.filter(item => item !== subject);
-      const { error } = await supabase.from('profiles').update({
-        subjects: nextSubjects,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '删除学科失败' };
-    } else if (action.type === 'ADD_POST') {
-      markLocalMutation('posts');
-      const draft = normalizePost(action.payload);
-      const hasMedia = (draft.images || []).length > 0 || (draft.videos || []).length > 0;
+        const [currentUpdate, targetUpdate] = await Promise.all([
+          supabase.from('profiles').update({ friends: nextCurrentFriends, updated_at: new Date().toISOString() }).eq('id', currentUser.id),
+          supabase.from('profiles').update({ friends: nextTargetFriends, updated_at: new Date().toISOString() }).eq('id', targetUserId),
+        ]);
+        if (currentUpdate.error || targetUpdate.error) {
+          return { ok: false, error: '好友关系更新失败' };
+        }
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'ADD_SUBJECT') {
+        markLocalMutation('profiles');
+        const subject = action.payload?.trim();
+        const nextSubjects = toUniqueStrings([...(currentUser.subjects || []), subject]);
+        const { error } = await supabase.from('profiles').update({
+          subjects: nextSubjects,
+          updated_at: new Date().toISOString(),
+        }).eq('id', currentUser.id);
+        if (error) return { ok: false, error: '新增学科失败' };
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'REMOVE_SUBJECT') {
+        markLocalMutation('profiles');
+        const subject = action.payload?.trim();
+        const currentSubjects = currentUser.subjects || [];
+        if (currentSubjects.length <= 1) {
+          return { ok: false, error: '至少保留一个学科' };
+        }
+        const nextSubjects = currentSubjects.filter(item => item !== subject);
+        const { error } = await supabase.from('profiles').update({
+          subjects: nextSubjects,
+          updated_at: new Date().toISOString(),
+        }).eq('id', currentUser.id);
+        if (error) return { ok: false, error: '删除学科失败' };
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'ADD_POST') {
+        markLocalMutation('posts');
+        const draft = normalizePost(action.payload);
+        const hasMedia = (draft.images || []).length > 0 || (draft.videos || []).length > 0;
 
-      if (hasMedia) {
-        const optimistic = normalizePost({
-          ...draft,
-          uploadStatus: 'uploading',
-          uploadError: '',
-        });
+        if (hasMedia) {
+          const optimistic = normalizePost({
+            ...draft,
+            uploadStatus: 'uploading',
+            uploadError: '',
+          });
 
-        baseDispatch({ type: 'ADD_POST', payload: optimistic });
+          baseDispatch({ type: 'ADD_POST', payload: optimistic });
 
-        (async () => {
-          try {
-            const uploaded = await preparePostPayload(currentUser.id, draft);
-            const { error } = await supabase.from('posts').insert(serializePost(uploaded));
-            if (error) throw error;
+          (async () => {
+            try {
+              const uploaded = await preparePostPayload(currentUser.id, draft);
+              const { error } = await supabase.from('posts').insert(serializePost(uploaded));
+              if (error) throw error;
 
-            baseDispatch({
-              type: 'PATCH_POST_LOCAL',
-              payload: {
-                postId: optimistic.id,
-                changes: {
-                  ...uploaded,
-                  uploadStatus: 'done',
-                  uploadError: '',
+              baseDispatch({
+                type: 'PATCH_POST_LOCAL',
+                payload: {
+                  postId: optimistic.id,
+                  changes: {
+                    ...uploaded,
+                    uploadStatus: 'done',
+                    uploadError: '',
+                  },
                 },
-              },
-            });
-          } catch (error) {
-            baseDispatch({
-              type: 'PATCH_POST_LOCAL',
-              payload: {
-                postId: optimistic.id,
-                changes: {
-                  uploadStatus: 'failed',
-                  uploadError: getFriendlyErrorMessage(error, '上传失败，请重试或删除后重发'),
+              });
+            } catch (error) {
+              baseDispatch({
+                type: 'PATCH_POST_LOCAL',
+                payload: {
+                  postId: optimistic.id,
+                  changes: {
+                    uploadStatus: 'failed',
+                    uploadError: getFriendlyErrorMessage(error, '上传失败，请重试或删除后重发'),
+                  },
                 },
-              },
-            });
+              });
+            }
+          })();
+
+          return { ok: true, async: true };
+        }
+
+        const payload = await preparePostPayload(currentUser.id, draft);
+        const { error } = await supabase.from('posts').insert(serializePost(payload));
+        if (error) return { ok: false, error: '发布动态失败' };
+        baseDispatch({ type: 'ADD_POST', payload: { ...payload, uploadStatus: 'done' } });
+        return { ok: true };
+      } else if (action.type === 'DELETE_POST') {
+        markLocalMutation('posts');
+        const { error } = await supabase.from('posts').delete().eq('id', action.payload).eq('user_id', currentUser.id);
+        if (error) return { ok: false, error: '删除动态失败' };
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'LIKE_POST') {
+        markLocalMutation('posts');
+        const post = currentState.posts.find(item => item.id === action.payload?.postId);
+        if (!post) return { ok: false, error: '动态不存在' };
+        const liked = (post.likes || []).includes(action.payload?.userId);
+        const nextLikes = liked
+          ? (post.likes || []).filter(id => id !== action.payload?.userId)
+          : [...(post.likes || []), action.payload?.userId];
+        const { error } = await supabase.from('posts').update({ likes: nextLikes }).eq('id', post.id);
+        if (error) return { ok: false, error: '点赞失败' };
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'ADD_COMMENT' || action.type === 'DELETE_COMMENT') {
+        markLocalMutation('posts');
+        const postId = action.payload?.postId;
+        const post = currentState.posts.find(item => item.id === postId);
+        if (!post) return { ok: false, error: '动态不存在' };
+        const optimisticComment = action.type === 'ADD_COMMENT' ? normalizeComment(action.payload?.comment) : null;
+        const nextComments = action.type === 'ADD_COMMENT'
+          ? [...(post.comments || []), optimisticComment]
+          : (post.comments || []).filter(comment => comment.id !== action.payload?.commentId);
+
+        if (action.type === 'ADD_COMMENT') {
+          baseDispatch({
+            type: 'ADD_COMMENT',
+            payload: {
+              postId,
+              comment: optimisticComment,
+            },
+          });
+        }
+
+        const { error } = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
+        if (error) {
+          if (action.type === 'ADD_COMMENT' && optimisticComment?.id) {
+            baseDispatch({ type: 'DELETE_COMMENT', payload: { postId, commentId: optimisticComment.id } });
           }
-        })();
+          return { ok: false, error: '评论更新失败' };
+        }
 
-        return { ok: true, async: true };
-      }
+        if (action.type === 'DELETE_COMMENT') {
+          baseDispatch(action);
+        }
+        return { ok: true };
+      } else if (action.type === 'ADD_PLAN') {
+        markLocalMutation('plans');
+        const { error } = await supabase.from('plans').insert(serializePlan(action.payload));
+        if (error) return { ok: false, error: '发布规划失败' };
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'DELETE_PLAN') {
+        markLocalMutation('plans');
+        const { error } = await supabase.from('plans').delete().eq('id', action.payload).eq('user_id', currentUser.id);
+        if (error) return { ok: false, error: '删除规划失败' };
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'TOGGLE_PLAN_TASK' || action.type === 'UPDATE_PLAN' || action.type === 'TOGGLE_PLAN_DONE') {
+        markLocalMutation('plans');
+        const planId = action.type === 'TOGGLE_PLAN_TASK'
+          ? action.payload?.planId
+          : action.type === 'TOGGLE_PLAN_DONE'
+            ? action.payload?.planId
+            : action.payload?.id;
+        const plan = currentState.plans.find(item => item.id === planId);
+        if (!plan) return { ok: false, error: '规划不存在' };
+        const mergedPlan = action.type === 'TOGGLE_PLAN_TASK'
+          ? {
+              ...plan,
+              tasks: (plan.tasks || []).map(task =>
+                task.id === action.payload?.taskId ? { ...task, done: !task.done } : task
+              ),
+            }
+          : action.type === 'TOGGLE_PLAN_DONE'
+            ? { ...plan, done: !plan.done }
+            : { ...plan, ...action.payload };
+        if (action.type === 'TOGGLE_PLAN_DONE') {
+          baseDispatch(action);
+        }
+        const { error } = await supabase.from('plans').update(serializePlan(mergedPlan)).eq('id', planId);
+        if (error) return { ok: false, error: '规划更新失败' };
+        if (action.type !== 'TOGGLE_PLAN_DONE') {
+          baseDispatch(action);
+        }
+        return { ok: true };
+      } else if (action.type === 'ADD_KNOWLEDGE') {
+        markLocalMutation('knowledge');
+        const payload = await prepareKnowledgePayload(currentUser.id, action.payload);
+        const { error } = await supabase.from('knowledge').insert(serializeKnowledge(payload));
+        if (error) return { ok: false, error: '保存错题失败' };
+        baseDispatch({ type: 'ADD_KNOWLEDGE', payload });
+        return { ok: true };
+      } else if (action.type === 'UPDATE_KNOWLEDGE') {
+        markLocalMutation('knowledge');
+        const existing = currentState.knowledge.find(item => item.id === action.payload?.id);
+        if (!existing) return { ok: false, error: '错题不存在' };
+        const payload = await prepareKnowledgePayload(currentUser.id, { ...existing, ...action.payload });
+        const { error } = await supabase.from('knowledge').update(serializeKnowledge(payload)).eq('id', payload.id);
+        if (error) return { ok: false, error: '更新错题失败' };
+        baseDispatch({ type: 'UPDATE_KNOWLEDGE', payload });
+        return { ok: true };
+      } else if (action.type === 'DELETE_KNOWLEDGE') {
+        markLocalMutation('knowledge');
+        const { error } = await supabase.from('knowledge').delete().eq('id', action.payload).eq('user_id', currentUser.id);
+        if (error) return { ok: false, error: '删除错题失败' };
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'LIKE_KNOWLEDGE') {
+        markLocalMutation('knowledge');
+        const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
+        if (!item) return { ok: false, error: '错题不存在' };
+        const liked = (item.likes || []).includes(action.payload?.userId);
+        const nextLikes = liked
+          ? (item.likes || []).filter(id => id !== action.payload?.userId)
+          : [...(item.likes || []), action.payload?.userId];
+        const { error } = await supabase.from('knowledge').update({ likes: nextLikes }).eq('id', item.id);
+        if (error) return { ok: false, error: '点赞失败' };
+        baseDispatch(action);
+        return { ok: true };
+      } else if (action.type === 'ADD_KNOWLEDGE_COMMENT') {
+        markLocalMutation('knowledge');
+        const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
+        if (!item) return { ok: false, error: '错题不存在' };
+        const uploadedComment = normalizeComment({
+          ...action.payload?.comment,
+          images: await uploadAssetList(currentUser.id, action.payload?.comment?.images, 'knowledge/comment-images'),
+          audioFiles: await uploadAudioFiles(currentUser.id, action.payload?.comment?.audioFiles, 'knowledge/comment-audio'),
+        });
+        const nextComments = [...(item.comments || []), uploadedComment];
 
-      const payload = await preparePostPayload(currentUser.id, draft);
-      const { error } = await supabase.from('posts').insert(serializePost(payload));
-      if (error) return { ok: false, error: '发布动态失败' };
-      baseDispatch({ type: 'ADD_POST', payload: { ...payload, uploadStatus: 'done' } });
-      return { ok: true };
-    } else if (action.type === 'DELETE_POST') {
-      markLocalMutation('posts');
-      const { error } = await supabase.from('posts').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除动态失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'LIKE_POST') {
-      markLocalMutation('posts');
-      const post = currentState.posts.find(item => item.id === action.payload?.postId);
-      if (!post) return { ok: false, error: '动态不存在' };
-      const liked = (post.likes || []).includes(action.payload?.userId);
-      const nextLikes = liked
-        ? (post.likes || []).filter(id => id !== action.payload?.userId)
-        : [...(post.likes || []), action.payload?.userId];
-      const { error } = await supabase.from('posts').update({ likes: nextLikes }).eq('id', post.id);
-      if (error) return { ok: false, error: '点赞失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'ADD_COMMENT' || action.type === 'DELETE_COMMENT') {
-      markLocalMutation('posts');
-      const postId = action.payload?.postId;
-      const post = currentState.posts.find(item => item.id === postId);
-      if (!post) return { ok: false, error: '动态不存在' };
-      const optimisticComment = action.type === 'ADD_COMMENT' ? normalizeComment(action.payload?.comment) : null;
-      const nextComments = action.type === 'ADD_COMMENT'
-        ? [...(post.comments || []), optimisticComment]
-        : (post.comments || []).filter(comment => comment.id !== action.payload?.commentId);
-
-      if (action.type === 'ADD_COMMENT') {
         baseDispatch({
-          type: 'ADD_COMMENT',
+          type: 'ADD_KNOWLEDGE_COMMENT',
           payload: {
-            postId,
-            comment: optimisticComment,
+            knowledgeId: item.id,
+            comment: uploadedComment,
           },
         });
-      }
 
-      const { error } = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
-      if (error) {
-        if (action.type === 'ADD_COMMENT' && optimisticComment?.id) {
-          baseDispatch({ type: 'DELETE_COMMENT', payload: { postId, commentId: optimisticComment.id } });
+        const { error } = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
+        if (error) {
+          baseDispatch({ type: 'DELETE_KNOWLEDGE_COMMENT', payload: { knowledgeId: item.id, commentId: uploadedComment.id } });
+          return { ok: false, error: '评论失败' };
         }
-        return { ok: false, error: '评论更新失败' };
-      }
-
-      if (action.type === 'DELETE_COMMENT') {
-        baseDispatch(action);
-      }
-      return { ok: true };
-    } else if (action.type === 'ADD_PLAN') {
-      markLocalMutation('plans');
-      const { error } = await supabase.from('plans').insert(serializePlan(action.payload));
-      if (error) return { ok: false, error: '发布规划失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'DELETE_PLAN') {
-      markLocalMutation('plans');
-      const { error } = await supabase.from('plans').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除规划失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'TOGGLE_PLAN_TASK' || action.type === 'UPDATE_PLAN' || action.type === 'TOGGLE_PLAN_DONE') {
-      markLocalMutation('plans');
-      const planId = action.type === 'TOGGLE_PLAN_TASK'
-        ? action.payload?.planId
-        : action.type === 'TOGGLE_PLAN_DONE'
-          ? action.payload?.planId
-          : action.payload?.id;
-      const plan = currentState.plans.find(item => item.id === planId);
-      if (!plan) return { ok: false, error: '规划不存在' };
-      const mergedPlan = action.type === 'TOGGLE_PLAN_TASK'
-        ? {
-            ...plan,
-            tasks: (plan.tasks || []).map(task =>
-              task.id === action.payload?.taskId ? { ...task, done: !task.done } : task
-            ),
-          }
-        : action.type === 'TOGGLE_PLAN_DONE'
-          ? { ...plan, done: !plan.done }
-          : { ...plan, ...action.payload };
-      if (action.type === 'TOGGLE_PLAN_DONE') {
-        baseDispatch(action);
-      }
-      const { error } = await supabase.from('plans').update(serializePlan(mergedPlan)).eq('id', planId);
-      if (error) return { ok: false, error: '规划更新失败' };
-      if (action.type !== 'TOGGLE_PLAN_DONE') {
-        baseDispatch(action);
-      }
-      return { ok: true };
-    } else if (action.type === 'ADD_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const payload = await prepareKnowledgePayload(currentUser.id, action.payload);
-      const { error } = await supabase.from('knowledge').insert(serializeKnowledge(payload));
-      if (error) return { ok: false, error: '保存错题失败' };
-      baseDispatch({ type: 'ADD_KNOWLEDGE', payload });
-      return { ok: true };
-    } else if (action.type === 'UPDATE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const existing = currentState.knowledge.find(item => item.id === action.payload?.id);
-      if (!existing) return { ok: false, error: '错题不存在' };
-      const payload = await prepareKnowledgePayload(currentUser.id, { ...existing, ...action.payload });
-      const { error } = await supabase.from('knowledge').update(serializeKnowledge(payload)).eq('id', payload.id);
-      if (error) return { ok: false, error: '更新错题失败' };
-      baseDispatch({ type: 'UPDATE_KNOWLEDGE', payload });
-      return { ok: true };
-    } else if (action.type === 'DELETE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const { error } = await supabase.from('knowledge').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除错题失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'LIKE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
-      if (!item) return { ok: false, error: '错题不存在' };
-      const liked = (item.likes || []).includes(action.payload?.userId);
-      const nextLikes = liked
-        ? (item.likes || []).filter(id => id !== action.payload?.userId)
-        : [...(item.likes || []), action.payload?.userId];
-      const { error } = await supabase.from('knowledge').update({ likes: nextLikes }).eq('id', item.id);
-      if (error) return { ok: false, error: '点赞失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'ADD_KNOWLEDGE_COMMENT') {
-      markLocalMutation('knowledge');
-      const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
-      if (!item) return { ok: false, error: '错题不存在' };
-      const uploadedComment = normalizeComment({
-        ...action.payload?.comment,
-        images: await uploadAssetList(currentUser.id, action.payload?.comment?.images, 'knowledge/comment-images'),
-        audioFiles: await uploadAudioFiles(currentUser.id, action.payload?.comment?.audioFiles, 'knowledge/comment-audio'),
-      });
-      const nextComments = [...(item.comments || []), uploadedComment];
-
-      baseDispatch({
-        type: 'ADD_KNOWLEDGE_COMMENT',
-        payload: {
-          knowledgeId: item.id,
-          comment: uploadedComment,
-        },
-      });
-
-      const { error } = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
-      if (error) {
-        baseDispatch({ type: 'DELETE_KNOWLEDGE_COMMENT', payload: { knowledgeId: item.id, commentId: uploadedComment.id } });
-        return { ok: false, error: '评论失败' };
-      }
-      return { ok: true };
-    } else {
-      baseDispatch(action);
-      return { ok: true };
-    }
-
-    if (['ADD_FRIEND', 'REMOVE_FRIEND', 'ADD_SUBJECT', 'REMOVE_SUBJECT'].includes(action.type)) {
-      baseDispatch(action);
-    }
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: getFriendlyErrorMessage(error, error?.message || '云端同步失败，请检查 Supabase 配置') };
-  }
-};
-
-export function AppProvider({ children }) {
-  const [state, baseDispatch] = useReducer(reducer, initialState);
-  const stateRef = useRef(state);
-  const cloudUserIdRef = useRef(null);
-  const refreshTimerRef = useRef(null);
-  const pendingTablesRef = useRef(new Set());
-  const localMutationMuteRef = useRef({
-    profiles: 0,
-    posts: 0,
-    plans: 0,
-    knowledge: 0,
-  });
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-  useEffect(() => {
-    AsyncStorage
-      .setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(normalizeNotifications(state.notifications)))
-      .catch(() => {});
-  }, [state.notifications]);
-
-  useEffect(() => {
-    if (state.currentUser?.id) {
-      AsyncStorage
-        .setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot(state.currentUser)))
-        .catch(() => {});
-    } else {
-      AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY).catch(() => {});
-    }
-  }, [state.currentUser]);
-
-  const hydrate = async () => {
-    if (!isSupabaseConfigured()) {
-      baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
-      return;
-    }
-
-    try {
-      const [cachedUser, cachedNotifications] = await Promise.all([
-        AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
-        AsyncStorage.getItem(NOTIFICATIONS_CACHE_KEY),
-      ]);
-
-      const notifications = cachedNotifications ? JSON.parse(cachedNotifications) : {};
-      if (cachedUser) {
-        const user = JSON.parse(cachedUser);
-        baseDispatch({ type: 'LOAD_STATE', payload: mergeCurrentUserFast(createEmptyLoadedState(notifications), user) });
-      }
-
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.user) {
-        if (!cachedUser) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(notifications) });
-        }
-        return;
-      }
-
-      cloudUserIdRef.current = session.user.id;
-      const loadedState = await fetchCloudState(session.user.id);
-      baseDispatch({ type: 'LOAD_STATE', payload: { ...loadedState, notifications } });
-    } catch (error) {
-      baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-    }
-  };
-
-  const restoreLocalAuthState = async () => {
-    if (!isSupabaseConfigured()) return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
-    try {
-      const [authRaw, userRaw] = await Promise.all([
-        AsyncStorage.getItem(AUTH_CACHE_KEY),
-        AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
-      ]);
-      const authCache = authRaw ? JSON.parse(authRaw) : null;
-      const cachedUser = userRaw ? JSON.parse(userRaw) : null;
-      if (!authCache?.account || !authCache?.password || !cachedUser?.id) return false;
-
-      const currentState = createEmptyLoadedState(cachedNotifications);
-      const merged = mergeCurrentUserFast(currentState, cachedUser, cachedUser);
-      baseDispatch({ type: 'LOAD_STATE', payload: merged });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const scheduleHydrate = (userId, tables = ['profiles', 'posts', 'plans', 'knowledge'], delay = 450) => {
-    if (!userId) return;
-    ensureArray(tables).forEach(table => pendingTablesRef.current.add(table));
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    refreshTimerRef.current = setTimeout(() => {
-      const pendingTables = Array.from(pendingTablesRef.current);
-      pendingTablesRef.current.clear();
-      if (pendingTables.length === 0) return;
-
-      fetchCloudPatch(pendingTables)
-        .then(patch => {
-          if (!active) return;
-          baseDispatch({
-            type: 'LOAD_STATE',
-            payload: applyCloudPatch(stateRef.current, patch, userId),
-          });
-        })
-        .catch(() => {
-          if (active) {
-            // 网络抖动或某个表查询失败时，保留当前登录态，避免闪回登录页
-            baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-          }
-        });
-    }, delay);
-  };
-
-  const shouldMuteTableSync = (table) => {
-    const mutedAt = Number(localMutationMuteRef.current?.[table] || 0);
-    return Date.now() - mutedAt < LOCAL_MUTATION_MUTE_MS;
-  };
-
-  const loadCloud = async () => {
-    try {
-      const cachedNotifications = await loadCachedNotifications();
-      const restoredLocally = await restoreLocalAuthState();
-      if (active && !restoredLocally) {
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-      }
-
-      const { data } = await supabase.auth.getSession();
-      if (!active) return;
-
-      if (data.session?.user) {
-        cloudUserIdRef.current = data.session.user.id;
-        await hydrate(data.session.user.id);
+        return { ok: true };
       } else {
-        // 兜底：进程被系统杀死后如果 session 丢失，尝试使用最近一次成功登录凭据自动恢复
-        const cacheRaw = await AsyncStorage.getItem(AUTH_CACHE_KEY);
-        const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
-        const account = normalizeAccount(cache?.account);
-        const password = String(cache?.password || '');
+        baseDispatch(action);
+        return { ok: true };
+      }
+    } catch (error) {
+      return { ok: false, error: getFriendlyErrorMessage(error, error?.message || '云端同步失败，请检查 Supabase 配置') };
+    }
+  };
 
-        if (account && password) {
-          const signInRes = await supabase.auth.signInWithPassword({
-            email: buildAuthEmail(account),
-            password,
-          });
-          if (signInRes?.data?.user?.id) {
-            cloudUserIdRef.current = signInRes.data.user.id;
-            await hydrate(signInRes.data.user.id);
-            return;
+  // 初始化加载
+  useEffect(() => {
+    loadCloud();
+
+    return () => {
+      activeRef.current = false;
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+      pendingTablesRef.current.clear();
+    };
+  }, []);
+
+  // 监听认证状态变化
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        cloudUserIdRef.current = session.user.id;
+        scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
+      } else if (activeRef.current) {
+        cloudUserIdRef.current = null;
+        restoreLocalAuthState().then(restored => {
+          if (!restored && activeRef.current) {
+            loadCachedNotifications().then(cachedNotifications => {
+              baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+            });
           }
-        }
-
-        if (!restoredLocally) {
-          cloudUserIdRef.current = null;
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-        }
+        }).catch(() => {
+          loadCachedNotifications().then(cachedNotifications => {
+            if (activeRef.current) {
+              baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
+            }
+          });
+        });
       }
-    } catch {
-      if (active) {
-        baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-      }
-    }
-  };
+    });
 
-  const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) {
-      cloudUserIdRef.current = session.user.id;
-      scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
-    } else if (active) {
-      cloudUserIdRef.current = null;
-      restoreLocalAuthState().then(restored => {
-        if (!restored) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-        }
-      }).catch(() => {
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-      });
-    }
-  });
+    // 订阅 Supabase 实时更新
+    const channel = supabase
+      .channel('friendcircle-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        if (shouldMuteTableSync('profiles')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['profiles']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+        if (shouldMuteTableSync('posts')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['posts']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
+        if (shouldMuteTableSync('plans')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['plans']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
+        if (shouldMuteTableSync('knowledge')) return;
+        scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
+      })
+      .subscribe();
 
-  const channel = supabase
-    .channel('friendcircle-sync')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-      if (shouldMuteTableSync('profiles')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['profiles']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
-      if (shouldMuteTableSync('posts')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['posts']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
-      if (shouldMuteTableSync('plans')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['plans']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
-      if (shouldMuteTableSync('knowledge')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
-    })
-    .subscribe();
+    return () => {
+      authListener?.subscription?.unsubscribe?.();
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
-  loadCloud();
-
-  return () => {
-    active = false;
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    }
-    pendingTablesRef.current.clear();
-    authListener.subscription.unsubscribe();
-    supabase.removeChannel(channel);
-  };
+  return (
+    <AppContext.Provider value={{ state, dispatch }}>
+      {children}
+    </AppContext.Provider>
+  );
 }
 
-const active = true;
-
-const dispatch = async (action) => {
-  if (!isSupabaseConfigured) {
-    return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
-  }
-
-  try {
-    const markLocalMutation = (table) => {
-      localMutationMuteRef.current[table] = Date.now();
-    };
-
-    if (action.type === 'LOGIN') {
-      const account = normalizeAccount(action.payload?.account);
-      const password = (action.payload?.password || '').trim();
-
-      if (!isValidAccount(account)) {
-        return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
-      }
-
-      if (!password) {
-        return { ok: false, error: '请输入密码' };
-      }
-
-      const signInRes = await supabase.auth.signInWithPassword({
-        email: buildAuthEmail(account),
-        password,
-      });
-
-      if (signInRes.error) return { ok: false, error: getFriendlyErrorMessage(signInRes.error, '登录失败') };
-
-      const authUser = signInRes.data.user;
-      if (authUser?.id) {
-        const currentState = stateRef.current;
-        const fallback = {
-          id: authUser.id,
-          account,
-          name: currentState.users.find(u => normalizeAccount(u.account || '') === account)?.name || account,
-        };
-
-        // 登录成功后先快速进入应用，资料同步放到后台完成，减少“登录中”等待。
-        baseDispatch({
-          type: 'LOAD_STATE',
-          payload: mergeCurrentUserFast(currentState, fallback, fallback),
-        });
-
-        const currentUserSnapshot = serializeCurrentUserSnapshot({
-          ...fallback,
-          bio: currentState.currentUser?.bio || '',
-          avatar: currentState.currentUser?.avatar || null,
-          avatarColor: currentState.currentUser?.avatarColor || pickAvatarColor(authUser.id),
-          friends: currentState.currentUser?.friends || [],
-          subjects: currentState.currentUser?.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
-        });
-        if (currentUserSnapshot) {
-          await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot));
-        }
-
-        supabase
-          .from('profiles')
-          .select('id,account,name,bio,avatar,avatar_color,friends,subjects')
-          .eq('id', authUser.id)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (!data) return;
-            baseDispatch({
-              type: 'LOAD_STATE',
-              payload: mergeCurrentUserFast(stateRef.current, data, fallback),
-            });
-            const snapshot = serializeCurrentUserSnapshot({
-              id: authUser.id,
-              account,
-              name: data.name || fallback.name,
-              bio: data.bio || '',
-              avatar: data.avatar || null,
-              avatarColor: data.avatar_color || pickAvatarColor(authUser.id),
-              friends: data.friends || [],
-              subjects: data.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
-            });
-            if (snapshot) {
-              AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
-            }
-          })
-          .catch(() => {});
-
-        await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
-      }
-
-      return { ok: true };
-    }
-
-    if (action.type === 'REGISTER') {
-      const account = normalizeAccount(action.payload?.account);
-      const password = (action.payload?.password || '').trim();
-      const email = buildAuthEmail(account);
-
-      if (!isValidAccount(account)) {
-        return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
-      }
-
-      if (password.length < 6) {
-        return { ok: false, error: '密码至少 6 位' };
-      }
-
-      const signUpRes = await supabase.auth.signUp({ email, password });
-      if (signUpRes.error) {
-        return { ok: false, error: getFriendlyErrorMessage(signUpRes.error, '注册失败') };
-      }
-
-      let authUserId = signUpRes.data.user?.id;
-      if (!authUserId) {
-        return { ok: false, error: '注册失败，未获取到云端用户信息' };
-      }
-
-      if (!signUpRes.data.session) {
-        const signInRes = await supabase.auth.signInWithPassword({ email, password });
-        if (signInRes.error) {
-          return { ok: false, error: 'Supabase 当前开启了邮箱确认，请先关闭 Confirm email 后再注册' };
-        }
-        authUserId = signInRes.data.user.id;
-      }
-
-      const profile = serializeProfile({
-        id: authUserId,
-        account,
-        name: action.payload?.name,
-        bio: '',
-        avatar: null,
-        avatarColor: pickAvatarColor(authUserId),
-        friends: [],
-        subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-      });
-
-      const { error: profileError } = await supabase.from('profiles').upsert(profile);
-      if (profileError) {
-        return { ok: false, error: '注册成功，但创建资料失败，请检查 Supabase 表结构' };
-      }
-
-      const currentState = stateRef.current;
-      baseDispatch({
-        type: 'LOAD_STATE',
-        payload: mergeCurrentUserFast(currentState, {
-          id: authUserId,
-          account,
-          name: action.payload?.name,
-          bio: '',
-          avatar: null,
-          avatar_color: pickAvatarColor(authUserId),
-          friends: [],
-          subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-        }, {
-          id: authUserId,
-          account,
-          name: action.payload?.name,
-        }),
-      });
-
-      await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
-        id: authUserId,
-        account,
-        name: action.payload?.name,
-        bio: '',
-        avatar: null,
-        avatarColor: pickAvatarColor(authUserId),
-        friends: [],
-        subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-      })));
-
-      await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
-
-      return { ok: true };
-    }
-
-    if (action.type === 'LOGOUT') {
-      const { error } = await supabase.auth.signOut();
-      if (error) return { ok: false, error: '退出登录失败' };
-      await AsyncStorage.removeItem(AUTH_CACHE_KEY);
-      await AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY);
-      baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(stateRef.current.notifications) });
-      return { ok: true };
-    }
-
-    if (action.type === 'MARK_NOTIFICATIONS_READ') {
-      const userId = action.payload?.userId;
-      const currentMap = normalizeNotifications(stateRef.current.notifications);
-      const nextMap = {
-        ...currentMap,
-        [userId]: {
-          ...(currentMap[userId] || {}),
-          commentsReadAt: action.payload?.readAt || new Date().toISOString(),
-        },
-      };
-
-      baseDispatch(action);
-      await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-      if (userId) {
-        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
-      }
-      return { ok: true };
-    }
-
-    if (action.type === 'MARK_INTERACTION_READ') {
-      const userId = action.payload?.userId;
-      const interactionKey = String(action.payload?.interactionKey || '').trim();
-      const currentMap = normalizeNotifications(stateRef.current.notifications);
-      const currentUserNotification = currentMap[userId] || {};
-      const currentReadIds = Array.isArray(currentUserNotification.readInteractionIds)
-        ? currentUserNotification.readInteractionIds
-        : [];
-      const nextReadIds = currentReadIds.includes(interactionKey)
-        ? currentReadIds
-        : [...currentReadIds, interactionKey];
-      const nextMap = {
-        ...currentMap,
-        [userId]: {
-          ...currentUserNotification,
-          readInteractionIds: nextReadIds,
-        },
-      };
-
-      baseDispatch(action);
-      await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-      if (userId) {
-        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
-      }
-      return { ok: true };
-    }
-
-    const currentState = stateRef.current;
-    const currentUser = currentState.currentUser;
-    if (!currentUser) {
-      return { ok: false, error: '请先登录' };
-    }
-
-    if (action.type === 'UPDATE_PROFILE') {
-      markLocalMutation('profiles');
-      let avatar = action.payload?.avatar ?? currentUser.avatar ?? null;
-      if (avatar && !isRemoteAsset(avatar)) {
-        avatar = await uploadAssetIfNeeded(currentUser.id, avatar, 'profiles/avatars');
-      }
-      const { error } = await supabase.from('profiles').update({
-        name: action.payload?.name?.trim() || currentUser.name,
-        bio: action.payload?.bio?.trim() || '',
-        avatar,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '资料保存失败' };
-
-      baseDispatch({
-        type: 'UPDATE_PROFILE',
-        payload: {
-          ...action.payload,
-          avatar,
-        },
-      });
-      AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
-        ...currentUser,
-        name: action.payload?.name?.trim() || currentUser.name,
-        bio: action.payload?.bio?.trim() || '',
-        avatar,
-      }))).catch(() => {});
-      return { ok: true };
-    } else if (action.type === 'ADD_FRIEND' || action.type === 'REMOVE_FRIEND') {
-      markLocalMutation('profiles');
-      const targetUserId = action.payload;
-      const targetUser = currentState.users.find(user => user.id === targetUserId);
-      if (!targetUser) return { ok: false, error: '未找到该用户' };
-
-      const nextCurrentFriends = action.type === 'ADD_FRIEND'
-        ? toUniqueStrings([...(currentUser.friends || []), targetUserId])
-        : (currentUser.friends || []).filter(id => id !== targetUserId);
-      const nextTargetFriends = action.type === 'ADD_FRIEND'
-        ? toUniqueStrings([...(targetUser.friends || []), currentUser.id])
-        : (targetUser.friends || []).filter(id => id !== currentUser.id);
-
-      const [currentUpdate, targetUpdate] = await Promise.all([
-        supabase.from('profiles').update({ friends: nextCurrentFriends, updated_at: new Date().toISOString() }).eq('id', currentUser.id),
-        supabase.from('profiles').update({ friends: nextTargetFriends, updated_at: new Date().toISOString() }).eq('id', targetUserId),
-      ]);
-      if (currentUpdate.error || targetUpdate.error) {
-        return { ok: false, error: '好友关系更新失败' };
-      }
-    } else if (action.type === 'ADD_SUBJECT') {
-      markLocalMutation('profiles');
-      const subject = action.payload?.trim();
-      const nextSubjects = toUniqueStrings([...(currentUser.subjects || []), subject]);
-      const { error } = await supabase.from('profiles').update({
-        subjects: nextSubjects,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '新增学科失败' };
-    } else if (action.type === 'REMOVE_SUBJECT') {
-      markLocalMutation('profiles');
-      const subject = action.payload?.trim();
-      const currentSubjects = currentUser.subjects || [];
-      if (currentSubjects.length <= 1) {
-        return { ok: false, error: '至少保留一个学科' };
-      }
-      const nextSubjects = currentSubjects.filter(item => item !== subject);
-      const { error } = await supabase.from('profiles').update({
-        subjects: nextSubjects,
-        updated_at: new Date().toISOString(),
-      }).eq('id', currentUser.id);
-      if (error) return { ok: false, error: '删除学科失败' };
-    } else if (action.type === 'ADD_POST') {
-      markLocalMutation('posts');
-      const draft = normalizePost(action.payload);
-      const hasMedia = (draft.images || []).length > 0 || (draft.videos || []).length > 0;
-
-      if (hasMedia) {
-        const optimistic = normalizePost({
-          ...draft,
-          uploadStatus: 'uploading',
-          uploadError: '',
-        });
-
-        baseDispatch({ type: 'ADD_POST', payload: optimistic });
-
-        (async () => {
-          try {
-            const uploaded = await preparePostPayload(currentUser.id, draft);
-            const { error } = await supabase.from('posts').insert(serializePost(uploaded));
-            if (error) throw error;
-
-            baseDispatch({
-              type: 'PATCH_POST_LOCAL',
-              payload: {
-                postId: optimistic.id,
-                changes: {
-                  ...uploaded,
-                  uploadStatus: 'done',
-                  uploadError: '',
-                },
-              },
-            });
-          } catch (error) {
-            baseDispatch({
-              type: 'PATCH_POST_LOCAL',
-              payload: {
-                postId: optimistic.id,
-                changes: {
-                  uploadStatus: 'failed',
-                  uploadError: getFriendlyErrorMessage(error, '上传失败，请重试或删除后重发'),
-                },
-              },
-            });
-          }
-        })();
-
-        return { ok: true, async: true };
-      }
-
-      const payload = await preparePostPayload(currentUser.id, draft);
-      const { error } = await supabase.from('posts').insert(serializePost(payload));
-      if (error) return { ok: false, error: '发布动态失败' };
-      baseDispatch({ type: 'ADD_POST', payload: { ...payload, uploadStatus: 'done' } });
-      return { ok: true };
-    } else if (action.type === 'DELETE_POST') {
-      markLocalMutation('posts');
-      const { error } = await supabase.from('posts').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除动态失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'LIKE_POST') {
-      markLocalMutation('posts');
-      const post = currentState.posts.find(item => item.id === action.payload?.postId);
-      if (!post) return { ok: false, error: '动态不存在' };
-      const liked = (post.likes || []).includes(action.payload?.userId);
-      const nextLikes = liked
-        ? (post.likes || []).filter(id => id !== action.payload?.userId)
-        : [...(post.likes || []), action.payload?.userId];
-      const { error } = await supabase.from('posts').update({ likes: nextLikes }).eq('id', post.id);
-      if (error) return { ok: false, error: '点赞失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'ADD_COMMENT' || action.type === 'DELETE_COMMENT') {
-      markLocalMutation('posts');
-      const postId = action.payload?.postId;
-      const post = currentState.posts.find(item => item.id === postId);
-      if (!post) return { ok: false, error: '动态不存在' };
-      const optimisticComment = action.type === 'ADD_COMMENT' ? normalizeComment(action.payload?.comment) : null;
-      const nextComments = action.type === 'ADD_COMMENT'
-        ? [...(post.comments || []), optimisticComment]
-        : (post.comments || []).filter(comment => comment.id !== action.payload?.commentId);
-
-      if (action.type === 'ADD_COMMENT') {
-        baseDispatch({
-          type: 'ADD_COMMENT',
-          payload: {
-            postId,
-            comment: optimisticComment,
-          },
-        });
-      }
-
-      const { error } = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
-      if (error) {
-        if (action.type === 'ADD_COMMENT' && optimisticComment?.id) {
-          baseDispatch({ type: 'DELETE_COMMENT', payload: { postId, commentId: optimisticComment.id } });
-        }
-        return { ok: false, error: '评论更新失败' };
-      }
-
-      if (action.type === 'DELETE_COMMENT') {
-        baseDispatch(action);
-      }
-      return { ok: true };
-    } else if (action.type === 'ADD_PLAN') {
-      markLocalMutation('plans');
-      const { error } = await supabase.from('plans').insert(serializePlan(action.payload));
-      if (error) return { ok: false, error: '发布规划失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'DELETE_PLAN') {
-      markLocalMutation('plans');
-      const { error } = await supabase.from('plans').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除规划失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'TOGGLE_PLAN_TASK' || action.type === 'UPDATE_PLAN' || action.type === 'TOGGLE_PLAN_DONE') {
-      markLocalMutation('plans');
-      const planId = action.type === 'TOGGLE_PLAN_TASK'
-        ? action.payload?.planId
-        : action.type === 'TOGGLE_PLAN_DONE'
-          ? action.payload?.planId
-          : action.payload?.id;
-      const plan = currentState.plans.find(item => item.id === planId);
-      if (!plan) return { ok: false, error: '规划不存在' };
-      const mergedPlan = action.type === 'TOGGLE_PLAN_TASK'
-        ? {
-            ...plan,
-            tasks: (plan.tasks || []).map(task =>
-              task.id === action.payload?.taskId ? { ...task, done: !task.done } : task
-            ),
-          }
-        : action.type === 'TOGGLE_PLAN_DONE'
-          ? { ...plan, done: !plan.done }
-          : { ...plan, ...action.payload };
-      if (action.type === 'TOGGLE_PLAN_DONE') {
-        baseDispatch(action);
-      }
-      const { error } = await supabase.from('plans').update(serializePlan(mergedPlan)).eq('id', planId);
-      if (error) return { ok: false, error: '规划更新失败' };
-      if (action.type !== 'TOGGLE_PLAN_DONE') {
-        baseDispatch(action);
-      }
-      return { ok: true };
-    } else if (action.type === 'ADD_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const payload = await prepareKnowledgePayload(currentUser.id, action.payload);
-      const { error } = await supabase.from('knowledge').insert(serializeKnowledge(payload));
-      if (error) return { ok: false, error: '保存错题失败' };
-      baseDispatch({ type: 'ADD_KNOWLEDGE', payload });
-      return { ok: true };
-    } else if (action.type === 'UPDATE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const existing = currentState.knowledge.find(item => item.id === action.payload?.id);
-      if (!existing) return { ok: false, error: '错题不存在' };
-      const payload = await prepareKnowledgePayload(currentUser.id, { ...existing, ...action.payload });
-      const { error } = await supabase.from('knowledge').update(serializeKnowledge(payload)).eq('id', payload.id);
-      if (error) return { ok: false, error: '更新错题失败' };
-      baseDispatch({ type: 'UPDATE_KNOWLEDGE', payload });
-      return { ok: true };
-    } else if (action.type === 'DELETE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const { error } = await supabase.from('knowledge').delete().eq('id', action.payload).eq('user_id', currentUser.id);
-      if (error) return { ok: false, error: '删除错题失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'LIKE_KNOWLEDGE') {
-      markLocalMutation('knowledge');
-      const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
-      if (!item) return { ok: false, error: '错题不存在' };
-      const liked = (item.likes || []).includes(action.payload?.userId);
-      const nextLikes = liked
-        ? (item.likes || []).filter(id => id !== action.payload?.userId)
-        : [...(item.likes || []), action.payload?.userId];
-      const { error } = await supabase.from('knowledge').update({ likes: nextLikes }).eq('id', item.id);
-      if (error) return { ok: false, error: '点赞失败' };
-      baseDispatch(action);
-      return { ok: true };
-    } else if (action.type === 'ADD_KNOWLEDGE_COMMENT') {
-      markLocalMutation('knowledge');
-      const item = currentState.knowledge.find(knowledge => knowledge.id === action.payload?.knowledgeId);
-      if (!item) return { ok: false, error: '错题不存在' };
-      const uploadedComment = normalizeComment({
-        ...action.payload?.comment,
-        images: await uploadAssetList(currentUser.id, action.payload?.comment?.images, 'knowledge/comment-images'),
-        audioFiles: await uploadAudioFiles(currentUser.id, action.payload?.comment?.audioFiles, 'knowledge/comment-audio'),
-      });
-      const nextComments = [...(item.comments || []), uploadedComment];
-
-      baseDispatch({
-        type: 'ADD_KNOWLEDGE_COMMENT',
-        payload: {
-          knowledgeId: item.id,
-          comment: uploadedComment,
-        },
-      });
-
-      const { error } = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
-      if (error) {
-        baseDispatch({ type: 'DELETE_KNOWLEDGE_COMMENT', payload: { knowledgeId: item.id, commentId: uploadedComment.id } });
-        return { ok: false, error: '评论失败' };
-      }
-      return { ok: true };
-    } else {
-      baseDispatch(action);
-      return { ok: true };
-    }
-
-    if (['ADD_FRIEND', 'REMOVE_FRIEND', 'ADD_SUBJECT', 'REMOVE_SUBJECT'].includes(action.type)) {
-      baseDispatch(action);
-    }
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: getFriendlyErrorMessage(error, error?.message || '云端同步失败，请检查 Supabase 配置') };
-  }
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) throw new Error('useApp must be used within AppProvider');
+  return context;
 };
-
-export function AppProvider({ children }) {
-  const [state, baseDispatch] = useReducer(reducer, initialState);
-  const stateRef = useRef(state);
-  const cloudUserIdRef = useRef(null);
-  const refreshTimerRef = useRef(null);
-  const pendingTablesRef = useRef(new Set());
-  const localMutationMuteRef = useRef({
-    profiles: 0,
-    posts: 0,
-    plans: 0,
-    knowledge: 0,
-  });
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-  useEffect(() => {
-    AsyncStorage
-      .setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(normalizeNotifications(state.notifications)))
-      .catch(() => {});
-  }, [state.notifications]);
-
-  useEffect(() => {
-    if (state.currentUser?.id) {
-      AsyncStorage
-        .setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot(state.currentUser)))
-        .catch(() => {});
-    } else {
-      AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY).catch(() => {});
-    }
-  }, [state.currentUser]);
-
-  const hydrate = async () => {
-    if (!isSupabaseConfigured()) {
-      baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
-      return;
-    }
-
-    try {
-      const [cachedUser, cachedNotifications] = await Promise.all([
-        AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
-        AsyncStorage.getItem(NOTIFICATIONS_CACHE_KEY),
-      ]);
-
-      const notifications = cachedNotifications ? JSON.parse(cachedNotifications) : {};
-      if (cachedUser) {
-        const user = JSON.parse(cachedUser);
-        baseDispatch({ type: 'LOAD_STATE', payload: mergeCurrentUserFast(createEmptyLoadedState(notifications), user) });
-      }
-
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.user) {
-        if (!cachedUser) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(notifications) });
-        }
-        return;
-      }
-
-      cloudUserIdRef.current = session.user.id;
-      const loadedState = await fetchCloudState(session.user.id);
-      baseDispatch({ type: 'LOAD_STATE', payload: { ...loadedState, notifications } });
-    } catch (error) {
-      baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-    }
-  };
-
-  const restoreLocalAuthState = async () => {
-    if (!isSupabaseConfigured()) return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
-    try {
-      const [authRaw, userRaw] = await Promise.all([
-        AsyncStorage.getItem(AUTH_CACHE_KEY),
-        AsyncStorage.getItem(CURRENT_USER_CACHE_KEY),
-      ]);
-      const authCache = authRaw ? JSON.parse(authRaw) : null;
-      const cachedUser = userRaw ? JSON.parse(userRaw) : null;
-      if (!authCache?.account || !authCache?.password || !cachedUser?.id) return false;
-
-      const currentState = createEmptyLoadedState(cachedNotifications);
-      const merged = mergeCurrentUserFast(currentState, cachedUser, cachedUser);
-      baseDispatch({ type: 'LOAD_STATE', payload: merged });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const scheduleHydrate = (userId, tables = ['profiles', 'posts', 'plans', 'knowledge'], delay = 450) => {
-    if (!userId) return;
-    ensureArray(tables).forEach(table => pendingTablesRef.current.add(table));
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    refreshTimerRef.current = setTimeout(() => {
-      const pendingTables = Array.from(pendingTablesRef.current);
-      pendingTablesRef.current.clear();
-      if (pendingTables.length === 0) return;
-
-      fetchCloudPatch(pendingTables)
-        .then(patch => {
-          if (!active) return;
-          baseDispatch({
-            type: 'LOAD_STATE',
-            payload: applyCloudPatch(stateRef.current, patch, userId),
-          });
-        })
-        .catch(() => {
-          if (active) {
-            // 网络抖动或某个表查询失败时，保留当前登录态，避免闪回登录页
-            baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-          }
-        });
-    }, delay);
-  };
-
-  const shouldMuteTableSync = (table) => {
-    const mutedAt = Number(localMutationMuteRef.current?.[table] || 0);
-    return Date.now() - mutedAt < LOCAL_MUTATION_MUTE_MS;
-  };
-
-  const loadCloud = async () => {
-    try {
-      const cachedNotifications = await loadCachedNotifications();
-      const restoredLocally = await restoreLocalAuthState();
-      if (active && !restoredLocally) {
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-      }
-
-      const { data } = await supabase.auth.getSession();
-      if (!active) return;
-
-      if (data.session?.user) {
-        cloudUserIdRef.current = data.session.user.id;
-        await hydrate(data.session.user.id);
-      } else {
-        // 兜底：进程被系统杀死后如果 session 丢失，尝试使用最近一次成功登录凭据自动恢复
-        const cacheRaw = await AsyncStorage.getItem(AUTH_CACHE_KEY);
-        const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
-        const account = normalizeAccount(cache?.account);
-        const password = String(cache?.password || '');
-
-        if (account && password) {
-          const signInRes = await supabase.auth.signInWithPassword({
-            email: buildAuthEmail(account),
-            password,
-          });
-          if (signInRes?.data?.user?.id) {
-            cloudUserIdRef.current = signInRes.data.user.id;
-            await hydrate(signInRes.data.user.id);
-            return;
-          }
-        }
-
-        if (!restoredLocally) {
-          cloudUserIdRef.current = null;
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-        }
-      }
-    } catch {
-      if (active) {
-        baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
-      }
-    }
-  };
-
-  const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) {
-      cloudUserIdRef.current = session.user.id;
-      scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
-    } else if (active) {
-      cloudUserIdRef.current = null;
-      restoreLocalAuthState().then(restored => {
-        if (!restored) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-        }
-      }).catch(() => {
-        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-      });
-    }
-  });
-
-  const channel = supabase
-    .channel('friendcircle-sync')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-      if (shouldMuteTableSync('profiles')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['profiles']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
-      if (shouldMuteTableSync('posts')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['posts']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
-      if (shouldMuteTableSync('plans')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['plans']);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
-      if (shouldMuteTableSync('knowledge')) return;
-      scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
-    })
-    .subscribe();
-
-  loadCloud();
-
-  return () => {
-    active = false;
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    }
-    pendingTablesRef.current.clear();
-    authListener.subscription.unsubscribe();
-    supabase.removeChannel(channel);
-  };
-}
-
-const active = true;
-
-const dispatch = async (action) => {
-  if (!isSupabaseConfigured) {
-    return { ok: false, error: CLOUD_CONFIG_REQUIRED_MESSAGE };
-  }
-
-  try {
-    const markLocalMutation = (table) => {
-      localMutationMuteRef.current[table] = Date.now();
-    };
-
-    if (action.type === 'LOGIN') {
-      const account = normalizeAccount(action.payload?.account);
-      const password = (action.payload?.password || '').trim();
-
-      if (!isValidAccount(account)) {
-        return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
-      }
-
-      if (!password) {
-        return { ok: false, error: '请输入密码' };
-      }
-
-      const signInRes = await supabase.auth.signInWithPassword({
-        email: buildAuthEmail(account),
-        password,
-      });
-
-      if (signInRes.error) return { ok: false, error: getFriendlyErrorMessage(signInRes.error, '登录失败') };
-
-      const authUser = signInRes.data.user;
-      if (authUser?.id) {
-        const currentState = stateRef.current;
-        const fallback = {
-          id: authUser.id,
-          account,
-          name: currentState.users.find(u => normalizeAccount(u.account || '') === account)?.name || account,
-        };
-
-        // 登录成功后先快速进入应用，资料同步放到后台完成，减少“登录中”等待。
-        baseDispatch({
-          type: 'LOAD_STATE',
-          payload: mergeCurrentUserFast(currentState, fallback, fallback),
-        });
-
-        const currentUserSnapshot = serializeCurrentUserSnapshot({
-          ...fallback,
-          bio: currentState.currentUser?.bio || '',
-          avatar: currentState.currentUser?.avatar || null,
-          avatarColor: currentState.currentUser?.avatarColor || pickAvatarColor(authUser.id),
-          friends: currentState.currentUser?.friends || [],
-          subjects: currentState.currentUser?.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
-        });
-        if (currentUserSnapshot) {
-          await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot));
-        }
-
-        supabase
-          .from('profiles')
-          .select('id,account,name,bio,avatar,avatar_color,friends,subjects')
-          .eq('id', authUser.id)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (!data) return;
-            baseDispatch({
-              type: 'LOAD_STATE',
-              payload: mergeCurrentUserFast(stateRef.current, data, fallback),
-            });
-            const snapshot = serializeCurrentUserSnapshot({
-              id: authUser.id,
-              account,
-              name: data.name || fallback.name,
-              bio: data.bio || '',
-              avatar: data.avatar || null,
-              avatarColor: data.avatar_color || pickAvatarColor(authUser.id),
-              friends: data.friends || [],
-              subjects: data.subjects || [...DEFAULT_SUBJECTS.slice(0, 2)],
-            });
-            if (snapshot) {
-              AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(snapshot)).catch(() => {});
-            }
-          })
-          .catch(() => {});
-
-        await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
-      }
-
-      return { ok: true };
-    }
-
-    if (action.type === 'REGISTER') {
-      const account = normalizeAccount(action.payload?.account);
-      const password = (action.payload?.password || '').trim();
-      const email = buildAuthEmail(account);
-
-      if (!isValidAccount(account)) {
-        return { ok: false, error: '账号格式不正确，请使用 3-32 位字母、数字或 . _ -' };
-      }
-
-      if (password.length < 6) {
-        return { ok: false, error: '密码至少 6 位' };
-      }
-
-      const signUpRes = await supabase.auth.signUp({ email, password });
-      if (signUpRes.error) {
-        return { ok: false, error: getFriendlyErrorMessage(signUpRes.error, '注册失败') };
-      }
-
-      let authUserId = signUpRes.data.user?.id;
-      if (!authUserId) {
-        return { ok: false, error: '注册失败，未获取到云端用户信息' };
-      }
-
-      if (!signUpRes.data.session) {
-        const signInRes = await supabase.auth.signInWithPassword({ email, password });
-        if (signInRes.error) {
-          return { ok: false, error: 'Supabase 当前开启了邮箱确认，请先关闭 Confirm email 后再注册' };
-        }
-        authUserId = signInRes.data.user.id;
-      }
-
-      const profile = serializeProfile({
-        id: authUserId,
-        account,
-        name: action.payload?.name,
-        bio: '',
-        avatar: null,
-        avatarColor: pickAvatarColor(authUserId),
-        friends: [],
-        subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-      });
-
-      const { error: profileError } = await supabase.from('profiles').upsert(profile);
-      if (profileError) {
-        return { ok: false, error: '注册成功，但创建资料失败，请检查 Supabase 表结构' };
-      }
-
-      const currentState = stateRef.current;
-      baseDispatch({
-        type: 'LOAD_STATE',
-        payload: mergeCurrentUserFast(currentState, {
-          id: authUserId,
-          account,
-          name: action.payload?.name,
-          bio: '',
-          avatar: null,
-          avatar_color: pickAvatarColor(authUserId),
-          friends: [],
-          subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-        }, {
-          id: authUserId,
-          account,
-          name: action.payload?.name,
-        }),
-      });
-
-      await AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(serializeCurrentUserSnapshot({
-        id: authUserId,
-        account,
-        name: action.payload?.name,
-        bio: '',
-        avatar: null,
-        avatarColor: pickAvatarColor(authUserId),
-        friends: [],
-        subjects: [...DEFAULT_SUBJECTS.slice(0, 2)],
-      })));
-
-      await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
-
-      return { ok: true };
-    }
-
-    if (action.type === 'LOGOUT') {
-      const { error } = await supabase.auth.signOut();
-      if (error) return { ok: false, error: '退出登录失败' };
-      await AsyncStorage.removeItem(AUTH_CACHE_KEY);
-      await AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY);
-      baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(stateRef.current.notifications) });
-      return { ok: true };
-    }
-
-    if (action.type === 'MARK_NOTIFICATIONS_READ') {
-      const userId = action.payload?.userId;
-      const currentMap = normalizeNotifications(stateRef.current.notifications);
-      const nextMap = {
-        ...currentMap,
-        [userId]: {
-          ...(currentMap[userId] || {}),
-          commentsReadAt: action.payload?.readAt || new Date().toISOString(),
-        },
-      };
-
-      baseDispatch(action);
-      await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-      if (userId) {
-        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
-      }
-      return { ok: true };
-    }
-
-    if (action.type === 'MARK_INTERACTION_READ') {
-      const userId =
