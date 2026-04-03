@@ -17,6 +17,7 @@ const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '
 export default function KnowledgeDetailScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
   const { currentUser, users } = state;
+  const safeCurrentUser = currentUser || { id: '' };
   const item = route.params?.item;
   // 用实时数据
   const liveItem = state.knowledge.find(k => k.id === item?.id) || item;
@@ -35,6 +36,41 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     }
   }, [liveItem, navigation]);
 
+  const author = users.find(u => u.id === liveItem?.userId) || { name: '未知', avatarColor: '#ccc' };
+  const liked = (liveItem?.likes || []).includes(safeCurrentUser.id);
+  const resolveReplyingName = (comment) => {
+    if (comment?.replyToUserId) {
+      const target = users.find(user => user.id === comment.replyToUserId);
+      return target?.name || comment.replyToUserName || '';
+    }
+    return comment.replyToUserName || '';
+  };
+  const siblingKnowledge = (state.knowledge || [])
+    .filter(k => k.subject === liveItem?.subject)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const siblingIndex = siblingKnowledge.findIndex(k => k.id === liveItem?.id);
+  const prevKnowledge = siblingIndex >= 0 && siblingIndex < siblingKnowledge.length - 1 ? siblingKnowledge[siblingIndex + 1] : null;
+  const nextKnowledge = siblingIndex > 0 ? siblingKnowledge[siblingIndex - 1] : null;
+  const knowledgeMediaSections = useMemo(() => {
+    if (!liveItem) return [];
+    const sections = [
+      ...(liveItem.questionImages || []).map(uri => ({ uri, label: '题目', type: 'image' })),
+      ...(liveItem.wrongAnswerImages || []).map(uri => ({ uri, label: '错误答案', type: 'image' })),
+      ...(liveItem.correctAnswerImages || []).map(uri => ({ uri, label: '正确答案', type: 'image' })),
+      ...(liveItem.summaryImages || []).map(uri => ({ uri, label: '知识总结', type: 'image' })),
+      ...(liveItem.images || []).map(uri => ({ uri, label: '附件', type: 'image' })),
+    ];
+    return sections;
+  }, [liveItem]);
+
+  useEffect(() => {
+    return () => {
+      if (recording) {
+        recording.stopAndUnloadAsync().catch(() => {});
+      }
+    };
+  }, [recording]);
+
   if (!currentUser?.id) {
     return (
       <View style={styles.container}>
@@ -49,42 +85,9 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     return null;
   }
 
-  const author = users.find(u => u.id === liveItem.userId) || { name: '未知', avatarColor: '#ccc' };
-  const liked = (liveItem.likes || []).includes(currentUser.id);
-  const resolveReplyingName = (comment) => {
-    if (comment?.replyToUserId) {
-      const target = users.find(user => user.id === comment.replyToUserId);
-      return target?.name || comment.replyToUserName || '';
-    }
-    return comment.replyToUserName || '';
-  };
-  const siblingKnowledge = (state.knowledge || [])
-    .filter(k => k.subject === liveItem.subject)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const siblingIndex = siblingKnowledge.findIndex(k => k.id === liveItem.id);
-  const prevKnowledge = siblingIndex >= 0 && siblingIndex < siblingKnowledge.length - 1 ? siblingKnowledge[siblingIndex + 1] : null;
-  const nextKnowledge = siblingIndex > 0 ? siblingKnowledge[siblingIndex - 1] : null;
-  const knowledgeMediaSections = useMemo(() => {
-    const sections = [
-      ...(liveItem.questionImages || []).map(uri => ({ uri, label: '题目', type: 'image' })),
-      ...(liveItem.wrongAnswerImages || []).map(uri => ({ uri, label: '错误答案', type: 'image' })),
-      ...(liveItem.correctAnswerImages || []).map(uri => ({ uri, label: '正确答案', type: 'image' })),
-      ...(liveItem.summaryImages || []).map(uri => ({ uri, label: '知识总结', type: 'image' })),
-      ...(liveItem.images || []).map(uri => ({ uri, label: '附件', type: 'image' })),
-    ];
-    return sections;
-  }, [liveItem.correctAnswerImages, liveItem.images, liveItem.questionImages, liveItem.summaryImages, liveItem.wrongAnswerImages]);
-
-  useEffect(() => {
-    return () => {
-      if (recording) {
-        recording.stopAndUnloadAsync().catch(() => {});
-      }
-    };
-  }, [recording]);
-
   const handleLike = () => {
-    dispatch({ type: 'LIKE_KNOWLEDGE', payload: { knowledgeId: liveItem.id, userId: currentUser.id } });
+    if (!safeCurrentUser.id) return;
+    dispatch({ type: 'LIKE_KNOWLEDGE', payload: { knowledgeId: liveItem.id, userId: safeCurrentUser.id } });
   };
 
   const openImageViewer = (uri) => {
@@ -202,13 +205,14 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
 
   const handleComment = async () => {
     if (!commentText.trim() && commentImages.length === 0 && commentAudioFiles.length === 0) return;
+    if (!safeCurrentUser.id) return;
     const result = await dispatch({
       type: 'ADD_KNOWLEDGE_COMMENT',
       payload: {
         knowledgeId: liveItem.id,
         comment: {
           id: generateId(),
-          userId: currentUser.id,
+          userId: safeCurrentUser.id,
           replyToUserId: replyTarget?.id || '',
           replyToUserName: replyTarget?.name || '',
           text: commentText.trim(),
@@ -234,7 +238,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   };
 
   const handleDelete = () => {
-    if (liveItem.userId !== currentUser.id) return;
+    if (liveItem.userId !== safeCurrentUser.id) return;
     Alert.alert('删除', '确认删除这道题？', [
       { text: '取消', style: 'cancel' },
       {
@@ -249,7 +253,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   };
 
   const handleToggleType = async () => {
-    if (liveItem.userId !== currentUser.id) return;
+    if (liveItem.userId !== safeCurrentUser.id) return;
     const nextType = (liveItem.type || 'knowledge_point') === 'error_item' ? 'knowledge_point' : 'error_item';
     const result = await dispatch({
       type: 'UPDATE_KNOWLEDGE',
@@ -284,7 +288,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             </Text>
           </View>
         </View>
-        {liveItem.userId === currentUser.id && (
+        {liveItem.userId === safeCurrentUser.id && (
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={handleToggleType} style={styles.typeSwitchBtn}>
               <Ionicons name="swap-horizontal-outline" size={18} color="#666" />
@@ -297,7 +301,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         )}
-        {liveItem.userId !== currentUser.id && <View style={{ width: 60 }} />}
+        {liveItem.userId !== safeCurrentUser.id && <View style={{ width: 60 }} />}
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">

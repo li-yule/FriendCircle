@@ -37,16 +37,8 @@ export default function ProfileScreen({ navigation }) {
     setAvatarInput(safeCurrentUser.avatar || null);
   }, [safeCurrentUser.id, safeCurrentUser.name, safeCurrentUser.bio, safeCurrentUser.avatar]);
 
-  if (!currentUser?.id) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={styles.tipText}>正在恢复登录状态...</Text>
-      </View>
-    );
-  }
-
-  const myPosts = posts.filter(p => p.userId === currentUser.id);
-  const myPlans = plans.filter(p => p.userId === currentUser.id);
+  const myPosts = posts.filter(p => p.userId === safeCurrentUser.id);
+  const myPlans = plans.filter(p => p.userId === safeCurrentUser.id);
   const interactionKeyOf = (interaction) => {
     const sourceType = interaction?.sourceType || 'unknown';
     const sourceId = interaction?.sourceId || 'unknown';
@@ -56,7 +48,7 @@ export default function ProfileScreen({ navigation }) {
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
       (post.comments || [])
-        .filter(comment => comment.userId !== currentUser.id)
+        .filter(comment => comment.userId !== safeCurrentUser.id)
         .map(comment => ({
           id: comment.id,
           sourceType: 'post',
@@ -64,17 +56,17 @@ export default function ProfileScreen({ navigation }) {
             fromUserId: comment.userId,
           sourcePreview: post.text || '动态内容',
           fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
-          isReplyToMe: comment.replyToUserId === currentUser.id,
+          isReplyToMe: comment.replyToUserId === safeCurrentUser.id,
           text: comment.text || '',
           createdAt: comment.createdAt,
         }))
     );
 
     const knowledgeInteractions = (knowledge || [])
-      .filter(item => item.userId === currentUser.id)
+      .filter(item => item.userId === safeCurrentUser.id)
       .flatMap(item =>
         (item.comments || [])
-          .filter(comment => comment.userId !== currentUser.id)
+          .filter(comment => comment.userId !== safeCurrentUser.id)
           .map(comment => ({
             id: comment.id,
             sourceType: 'knowledge',
@@ -82,7 +74,7 @@ export default function ProfileScreen({ navigation }) {
             fromUserId: comment.userId,
             sourcePreview: item.question || '知识内容',
             fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
-            isReplyToMe: comment.replyToUserId === currentUser.id,
+            isReplyToMe: comment.replyToUserId === safeCurrentUser.id,
             text: comment.text || '',
             createdAt: comment.createdAt,
           }))
@@ -91,7 +83,7 @@ export default function ProfileScreen({ navigation }) {
     return [...postInteractions, ...knowledgeInteractions]
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       .slice(0, 30);
-  }, [currentUser.id, knowledge, myPosts, users]);
+  }, [safeCurrentUser.id, knowledge, myPosts, users]);
   const unreadInteractions = useMemo(
     () => incomingInteractions.filter(item => !readInteractionIds.has(interactionKeyOf(item))),
     [incomingInteractions, readInteractionIds]
@@ -117,10 +109,10 @@ export default function ProfileScreen({ navigation }) {
       return Array.from(map.values()).sort((a, b) => new Date(b.latest) - new Date(a.latest));
     }, [myPlans]);
 
-  const myFriends = users.filter(u => (currentUser.friends || []).includes(u.id));
+  const myFriends = users.filter(u => (safeCurrentUser.friends || []).includes(u.id));
   const recommendFriends = users.filter(u => {
-    if (u.id === currentUser.id) return false;
-    if ((currentUser.friends || []).includes(u.id)) return false;
+    if (u.id === safeCurrentUser.id) return false;
+    if ((safeCurrentUser.friends || []).includes(u.id)) return false;
     // 只显示有发布过内容的真实用户
     const userPosts = posts.filter(p => p.userId === u.id);
     const userPlans = plans.filter(p => p.userId === u.id);
@@ -287,7 +279,7 @@ export default function ProfileScreen({ navigation }) {
   const openInteraction = async (interaction) => {
     await dispatch({
       type: 'MARK_INTERACTION_READ',
-      payload: { userId: currentUser.id, interactionKey: interactionKeyOf(interaction) },
+      payload: { userId: safeCurrentUser.id, interactionKey: interactionKeyOf(interaction) },
     });
 
     if (interaction.sourceType === 'post') {
@@ -303,6 +295,14 @@ export default function ProfileScreen({ navigation }) {
   const handleToggleInteractions = () => {
     setShowInteractions(prev => !prev);
   };
+
+  if (!currentUser?.id) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.tipText}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>

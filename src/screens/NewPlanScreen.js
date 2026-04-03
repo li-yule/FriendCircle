@@ -13,16 +13,6 @@ export default function NewPlanScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { currentUser } = state;
 
-  if (!currentUser?.id) {
-    return (
-      <View style={styles.container}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#666', fontSize: 14 }}>正在恢复登录状态...</Text>
-        </View>
-      </View>
-    );
-  }
-
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getTodayStr());
   const [enableReminder, setEnableReminder] = useState(false);
@@ -111,6 +101,11 @@ export default function NewPlanScreen({ navigation }) {
 
   const handleSubmit = async () => {
     if (isSubmitting) return;
+
+    if (!currentUser?.id) {
+      Alert.alert('提示', '正在恢复登录状态，请稍后再试');
+      return;
+    }
 
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {

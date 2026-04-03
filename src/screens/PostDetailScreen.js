@@ -15,20 +15,13 @@ const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '
 export default function PostDetailScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
   const { posts, users, currentUser } = state;
+  const safeCurrentUser = currentUser || { id: '' };
   const postId = route.params?.postId;
   const passedPost = route.params?.post;
   const livePost = posts.find(item => item.id === postId) || passedPost;
   const [commentText, setCommentText] = useState('');
   const [replyTarget, setReplyTarget] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-
-  if (!currentUser?.id) {
-    return (
-      <View style={styles.emptyWrap}>
-        <Text style={styles.emptyText}>正在恢复登录状态...</Text>
-      </View>
-    );
-  }
 
   const getUserById = id => users.find(user => user.id === id) || { name: '未知用户', avatarColor: '#ccc' };
   const resolveReplyingName = (comment) => {
@@ -56,7 +49,7 @@ export default function PostDetailScreen({ navigation, route }) {
   }
 
   const author = getUserById(livePost.userId);
-  const liked = (livePost.likes || []).includes(currentUser.id);
+  const liked = (livePost.likes || []).includes(safeCurrentUser.id);
 
   const openMediaViewer = (index) => {
     if (!mediaItems.length) return;
@@ -68,19 +61,21 @@ export default function PostDetailScreen({ navigation, route }) {
   };
 
   const handleLike = () => {
-    dispatch({ type: 'LIKE_POST', payload: { postId: livePost.id, userId: currentUser.id } });
+    if (!safeCurrentUser.id) return;
+    dispatch({ type: 'LIKE_POST', payload: { postId: livePost.id, userId: safeCurrentUser.id } });
   };
 
   const handleComment = async () => {
     const text = commentText.trim();
     if (!text) return;
+    if (!safeCurrentUser.id) return;
     const result = await dispatch({
       type: 'ADD_COMMENT',
       payload: {
         postId: livePost.id,
         comment: {
           id: generateId(),
-          userId: currentUser.id,
+          userId: safeCurrentUser.id,
           replyToUserId: replyTarget?.id || '',
           replyToUserName: replyTarget?.name || '',
           text,
@@ -99,7 +94,7 @@ export default function PostDetailScreen({ navigation, route }) {
   };
 
   const handleDelete = () => {
-    if (livePost.userId !== currentUser.id) return;
+    if (livePost.userId !== safeCurrentUser.id) return;
     Alert.alert('删除动态', '确认删除这条动态吗？', [
       { text: '取消', style: 'cancel' },
       {
@@ -132,7 +127,7 @@ export default function PostDetailScreen({ navigation, route }) {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>动态详情</Text>
-        {livePost.userId === currentUser.id ? (
+        {livePost.userId === safeCurrentUser.id ? (
           <TouchableOpacity onPress={handleDelete}>
             <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
           </TouchableOpacity>
