@@ -252,6 +252,31 @@ export default function ProfileScreen({ navigation }) {
     dispatch({ type: 'REFRESH_MESSAGE_INBOX', payload: { userId: currentUserId } });
   }, [currentUserId]);
 
+  useEffect(() => {
+    if (!showInteractions || !currentUserId) return;
+
+    let active = true;
+    (async () => {
+      const markRes = await dispatch({
+        type: 'MARK_NOTIFICATIONS_READ',
+        payload: { userId: currentUserId, readAt: new Date().toISOString() },
+      });
+
+      if (!active) return;
+
+      if (!markRes?.ok) {
+        Alert.alert('同步失败', markRes?.error || '消息已读状态同步失败，请稍后重试');
+        return;
+      }
+
+      await dispatch({ type: 'REFRESH_MESSAGE_INBOX', payload: { userId: currentUserId } });
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [showInteractions, currentUserId]);
+
   const markInteractionAsRead = async (interaction) => {
     if (!interaction?.id) return;
     await dispatch({
@@ -274,13 +299,7 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const handleToggleInteractions = () => {
-    setShowInteractions(prev => {
-      const next = !prev;
-      if (next) {
-        dispatch({ type: 'MARK_NOTIFICATIONS_READ', payload: { userId: currentUserId, readAt: new Date().toISOString() } });
-      }
-      return next;
-    });
+    setShowInteractions(prev => !prev);
   };
 
   return (
