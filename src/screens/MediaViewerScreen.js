@@ -7,8 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { PinchGestureHandler, State as GestureState } from 'react-native-gesture-handler';
-import { PanGestureHandler } from 'react-native-gesture-handler';
+import { PanGestureHandler, PinchGestureHandler, State as GestureState } from 'react-native-gesture-handler';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -38,6 +37,9 @@ function ImageSlide({ uri }) {
   const scale = useRef(Animated.multiply(baseScale, pinchScale)).current;
   const panX = useRef(new Animated.Value(0)).current;
   const panY = useRef(new Animated.Value(0)).current;
+  const pinchRef = useRef(null);
+  const panRef = useRef(null);
+  const [isZoomed, setIsZoomed] = useState(false);
 
   const onPinchGestureEvent = Animated.event(
     [{ nativeEvent: { scale: pinchScale } }],
@@ -55,6 +57,7 @@ function ImageSlide({ uri }) {
       lastScale.current = nextScale;
       baseScale.setValue(nextScale);
       pinchScale.setValue(1);
+      setIsZoomed(nextScale > 1.02);
       if (nextScale === 1) {
         panX.setOffset(0);
         panX.setValue(0);
@@ -82,9 +85,20 @@ function ImageSlide({ uri }) {
 
   return (
     <View style={styles.slide}>
-      <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
+      <PinchGestureHandler
+        ref={pinchRef}
+        simultaneousHandlers={panRef}
+        onGestureEvent={onPinchGestureEvent}
+        onHandlerStateChange={onPinchStateChange}
+      >
         <Animated.View style={styles.zoomContent}>
-          <PanGestureHandler onGestureEvent={onPanGestureEvent} onHandlerStateChange={onPanStateChange}>
+          <PanGestureHandler
+            ref={panRef}
+            enabled={isZoomed}
+            simultaneousHandlers={pinchRef}
+            onGestureEvent={onPanGestureEvent}
+            onHandlerStateChange={onPanStateChange}
+          >
             <Animated.View>
               <Animated.Image
                 source={{ uri }}

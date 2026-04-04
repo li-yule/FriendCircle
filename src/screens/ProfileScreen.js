@@ -27,8 +27,7 @@ export default function ProfileScreen({ navigation }) {
 
   const myPosts = currentUserId ? posts.filter(p => p.userId === currentUserId) : [];
   const myPlans = currentUserId ? plans.filter(p => p.userId === currentUserId) : [];
-  const interactionKeyOf = (interaction) => `${interaction?.sourceType || 'unknown'}:${interaction?.id || 'unknown'}`;
-  const legacyInteractionKeyOf = (interaction) => {
+  const stableInteractionKeyOf = (interaction) => {
     const sourceType = interaction?.sourceType || 'unknown';
     const sourceId = interaction?.sourceId || 'unknown';
     const fromUserId = interaction?.fromUserId || interaction?.fromUser?.id || 'unknown';
@@ -36,8 +35,9 @@ export default function ProfileScreen({ navigation }) {
     const text = String(interaction?.text || '').trim();
     return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
   };
+  const idInteractionKeyOf = (interaction) => `${interaction?.sourceType || 'unknown'}:${interaction?.id || 'unknown'}`;
   const isInteractionRead = (interaction) =>
-    readInteractionIds.has(interactionKeyOf(interaction)) || readInteractionIds.has(legacyInteractionKeyOf(interaction));
+    readInteractionIds.has(stableInteractionKeyOf(interaction)) || readInteractionIds.has(idInteractionKeyOf(interaction));
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
       (post.comments || [])
@@ -284,13 +284,11 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const openInteraction = async (interaction) => {
-    const keysToMark = [interactionKeyOf(interaction), legacyInteractionKeyOf(interaction)];
-    for (const key of keysToMark) {
-      await dispatch({
-        type: 'MARK_INTERACTION_READ',
-        payload: { userId: currentUserId, interactionKey: key },
-      });
-    }
+    const interactionKey = stableInteractionKeyOf(interaction);
+    await dispatch({
+      type: 'MARK_INTERACTION_READ',
+      payload: { userId: currentUserId, interactionKey },
+    });
 
     if (interaction.sourceType === 'post') {
       navigation.navigate('PostDetail', { postId: interaction.sourceId });
