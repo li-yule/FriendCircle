@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Alert, TextInput,
@@ -14,17 +14,19 @@ import { formatTime, formatDate } from '../utils/helpers';
 export default function ProfileScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { currentUser, users, posts, plans, knowledge } = state;
+  const currentUserId = currentUser?.id || '';
+  const safeCurrentUser = currentUser || { id: '', name: '', bio: '', avatar: null, friends: [] };
   const [tab, setTab] = useState('posts'); // 'posts' | 'plans' | 'friends'
   const [editing, setEditing] = useState(false);
   const [showInteractions, setShowInteractions] = useState(false);
-  const [nameInput, setNameInput] = useState(currentUser.name || '');
-  const [bioInput, setBioInput] = useState(currentUser.bio || '');
-  const [avatarInput, setAvatarInput] = useState(currentUser.avatar || null);
+  const [nameInput, setNameInput] = useState(safeCurrentUser.name || '');
+  const [bioInput, setBioInput] = useState(safeCurrentUser.bio || '');
+  const [avatarInput, setAvatarInput] = useState(safeCurrentUser.avatar || null);
   const [savingProfile, setSavingProfile] = useState(false);
-  const readInteractionIds = new Set(state.notifications?.[currentUser.id]?.readInteractionIds || []);
+  const readInteractionIds = new Set(state.notifications?.[currentUserId]?.readInteractionIds || []);
 
-  const myPosts = posts.filter(p => p.userId === currentUser.id);
-  const myPlans = plans.filter(p => p.userId === currentUser.id);
+  const myPosts = currentUserId ? posts.filter(p => p.userId === currentUserId) : [];
+  const myPlans = currentUserId ? plans.filter(p => p.userId === currentUserId) : [];
   const interactionKeyOf = (interaction) => `${interaction?.sourceType || 'unknown'}:${interaction?.id || 'unknown'}`;
   const legacyInteractionKeyOf = (interaction) => {
     const sourceType = interaction?.sourceType || 'unknown';
@@ -39,7 +41,7 @@ export default function ProfileScreen({ navigation }) {
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
       (post.comments || [])
-        .filter(comment => comment.userId !== currentUser.id)
+        .filter(comment => comment.userId !== currentUserId)
         .map(comment => ({
           id: comment.id,
           sourceType: 'post',
@@ -47,17 +49,17 @@ export default function ProfileScreen({ navigation }) {
             fromUserId: comment.userId,
           sourcePreview: post.text || '动态内容',
           fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
-          isReplyToMe: comment.replyToUserId === currentUser.id,
+          isReplyToMe: comment.replyToUserId === currentUserId,
           text: comment.text || '',
           createdAt: comment.createdAt,
         }))
     );
 
     const knowledgeInteractions = (knowledge || [])
-      .filter(item => item.userId === currentUser.id)
+      .filter(item => item.userId === currentUserId)
       .flatMap(item =>
         (item.comments || [])
-          .filter(comment => comment.userId !== currentUser.id)
+          .filter(comment => comment.userId !== currentUserId)
           .map(comment => ({
             id: comment.id,
             sourceType: 'knowledge',
@@ -65,7 +67,7 @@ export default function ProfileScreen({ navigation }) {
             fromUserId: comment.userId,
             sourcePreview: item.question || '知识内容',
             fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
-            isReplyToMe: comment.replyToUserId === currentUser.id,
+            isReplyToMe: comment.replyToUserId === currentUserId,
             text: comment.text || '',
             createdAt: comment.createdAt,
           }))
@@ -74,7 +76,7 @@ export default function ProfileScreen({ navigation }) {
     return [...postInteractions, ...knowledgeInteractions]
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       .slice(0, 30);
-  }, [currentUser.id, knowledge, myPosts, users]);
+  }, [currentUserId, knowledge, myPosts, users]);
   const unreadInteractions = useMemo(
     () => incomingInteractions.filter(item => !isInteractionRead(item)),
     [incomingInteractions, readInteractionIds]
@@ -99,10 +101,25 @@ export default function ProfileScreen({ navigation }) {
       return Array.from(map.values()).sort((a, b) => new Date(b.latest) - new Date(a.latest));
     }, [myPlans]);
 
-  const myFriends = users.filter(u => (currentUser.friends || []).includes(u.id));
+  useEffect(() => {
+    if (editing) return;
+    setNameInput(safeCurrentUser.name || '');
+    setBioInput(safeCurrentUser.bio || '');
+    setAvatarInput(safeCurrentUser.avatar || null);
+  }, [editing, safeCurrentUser.name, safeCurrentUser.bio, safeCurrentUser.avatar]);
+
+  if (!currentUserId) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
+        <Text style={{ color: '#6E655C' }}>正在恢复个人中心...</Text>
+      </View>
+    );
+  }
+
+  const myFriends = users.filter(u => (safeCurrentUser.friends || []).includes(u.id));
   const recommendFriends = users.filter(u => {
-    if (u.id === currentUser.id) return false;
-    if ((currentUser.friends || []).includes(u.id)) return false;
+    if (u.id === currentUserId) return false;
+    if ((safeCurrentUser.friends || []).includes(u.id)) return false;
     // 只显示有发布过内容的真实用户
     const userPosts = posts.filter(p => p.userId === u.id);
     const userPlans = plans.filter(p => p.userId === u.id);
@@ -157,9 +174,9 @@ export default function ProfileScreen({ navigation }) {
     const nextAvatar = avatarInput || null;
 
     if (
-      nextName === String(currentUser.name || '').trim() &&
-      nextBio === String(currentUser.bio || '').trim() &&
-      nextAvatar === (currentUser.avatar || null)
+      nextName === String(safeCurrentUser.name || '').trim() &&
+      nextBio === String(safeCurrentUser.bio || '').trim() &&
+      nextAvatar === (safeCurrentUser.avatar || null)
     ) {
       setEditing(false);
       return;
@@ -271,7 +288,7 @@ export default function ProfileScreen({ navigation }) {
     for (const key of keysToMark) {
       await dispatch({
         type: 'MARK_INTERACTION_READ',
-        payload: { userId: currentUser.id, interactionKey: key },
+        payload: { userId: currentUserId, interactionKey: key },
       });
     }
 
@@ -305,7 +322,7 @@ export default function ProfileScreen({ navigation }) {
         </View>
         <View style={styles.profileTop}>
           <View>
-            <Avatar user={{ ...currentUser, avatar: avatarInput || currentUser.avatar }} size={72} onPress={editing ? handlePickAvatar : undefined} />
+            <Avatar user={{ ...safeCurrentUser, avatar: avatarInput || safeCurrentUser.avatar }} size={72} onPress={editing ? handlePickAvatar : undefined} />
             {editing && (
               <TouchableOpacity style={styles.avatarEditBtn} onPress={handlePickAvatar}>
                 <Ionicons name="camera" size={14} color="#fff" />
@@ -321,8 +338,8 @@ export default function ProfileScreen({ navigation }) {
               </>
             ) : (
               <>
-                <Text style={styles.profileName}>{currentUser.name}</Text>
-                <Text style={styles.profileBio}>{currentUser.bio || '这个人很懒，什么都没留下~'}</Text>
+                <Text style={styles.profileName}>{safeCurrentUser.name}</Text>
+                <Text style={styles.profileBio}>{safeCurrentUser.bio || '这个人很懒，什么都没留下~'}</Text>
               </>
             )}
           </View>

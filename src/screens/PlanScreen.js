@@ -12,20 +12,22 @@ import DatePickerSheet from '../components/DatePickerSheet';
 export default function PlanScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { plans, currentUser, users } = state;
+  const currentUserId = currentUser?.id || '';
+  const safeCurrentUser = currentUser || { id: '', friends: [] };
   const [activeTab, setActiveTab] = useState('mine'); // 'mine' | 'friends'
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
-  const myFriendIds = new Set(currentUser.friends || []);
+  const myFriendIds = new Set(safeCurrentUser.friends || []);
 
-  const myPlans = useMemo(() => plans
-    .filter(p => p.userId === currentUser.id)
-    .sort((a, b) => new Date(a.date) - new Date(b.date)), [plans, currentUser.id]);
+  const myPlans = useMemo(() => (currentUserId ? plans
+    .filter(p => p.userId === currentUserId)
+    .sort((a, b) => new Date(a.date) - new Date(b.date)) : []), [plans, currentUserId]);
 
-  const friendPlans = useMemo(() => plans
-    .filter(p => p.userId !== currentUser.id && myFriendIds.has(p.userId))
-    .sort((a, b) => new Date(a.date) - new Date(b.date)), [plans, currentUser.id, currentUser.friends]);
+  const friendPlans = useMemo(() => (currentUserId ? plans
+    .filter(p => p.userId !== currentUserId && myFriendIds.has(p.userId))
+    .sort((a, b) => new Date(a.date) - new Date(b.date)) : []), [plans, currentUserId, safeCurrentUser.friends]);
 
   const availableDateKeys = useMemo(
     () => [...new Set((activeTab === 'mine' ? myPlans : friendPlans).map(p => toDateKey(p.date)))].sort(),
@@ -42,6 +44,14 @@ export default function PlanScreen({ navigation }) {
       setSelectedDate(todayKey);
     }
   }, [availableDateKeys, selectedDate]);
+
+  if (!currentUserId) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
+        <Text style={{ color: '#6E655C' }}>正在恢复打卡数据...</Text>
+      </View>
+    );
+  }
 
   const data = (activeTab === 'mine' ? myPlans : friendPlans).filter(item => toDateKey(item.date) === selectedDate);
 
@@ -77,7 +87,7 @@ export default function PlanScreen({ navigation }) {
   };
 
   const handleDeletePlan = (plan) => {
-    if (!plan || plan.userId !== currentUser.id) return;
+    if (!plan || plan.userId !== currentUserId) return;
     Alert.alert('删除规划', '确认删除这条规划？', [
       { text: '取消', style: 'cancel' },
       {

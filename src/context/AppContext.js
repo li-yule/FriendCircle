@@ -997,6 +997,7 @@ export function AppProvider({ children }) {
   const cloudUserIdRef = useRef(null);
   const refreshTimerRef = useRef(null);
   const pendingTablesRef = useRef(new Set());
+  const authBootstrappingRef = useRef(true);
   const localMutationMuteRef = useRef({
     profiles: 0,
     posts: 0,
@@ -1025,6 +1026,8 @@ export function AppProvider({ children }) {
       baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState() });
       return undefined;
     }
+
+    authBootstrappingRef.current = true;
 
     let active = true;
     let cachedNotifications = {};
@@ -1136,9 +1139,6 @@ export function AppProvider({ children }) {
         cachedNotifications = await loadCachedNotifications();
         const restoredFromSnapshot = await restoreStateSnapshot();
         const restoredLocally = restoredFromSnapshot || await restoreLocalAuthState();
-        if (active && !restoredLocally) {
-          baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(cachedNotifications) });
-        }
 
         const { data } = await supabase.auth.getSession();
         if (!active) return;
@@ -1174,10 +1174,21 @@ export function AppProvider({ children }) {
         if (active) {
           baseDispatch({ type: 'LOAD_STATE', payload: keepCurrentUserOnSyncError(stateRef.current) });
         }
+      } finally {
+        if (active) {
+          authBootstrappingRef.current = false;
+        }
       }
     };
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (authBootstrappingRef.current) {
+        if (session?.user) {
+          cloudUserIdRef.current = session.user.id;
+        }
+        return;
+      }
+
       if (session?.user) {
         cloudUserIdRef.current = session.user.id;
         scheduleHydrate(session.user.id, ['profiles', 'posts', 'plans', 'knowledge'], 0);
