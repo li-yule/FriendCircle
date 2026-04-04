@@ -53,6 +53,21 @@ create table if not exists public.knowledge (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  actor_id uuid not null references public.profiles (id) on delete cascade,
+  source_type text not null,
+  source_id text not null,
+  source_preview text not null default '',
+  content text not null default '',
+  is_read int not null default 0,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists idx_messages_user_unread on public.messages (user_id, is_read);
+create index if not exists idx_messages_user_created_at on public.messages (user_id, created_at desc);
+
 create table if not exists public.notification_reads (
   user_id uuid primary key references public.profiles (id) on delete cascade,
   read_interaction_ids text[] not null default '{}',
@@ -68,6 +83,7 @@ alter table public.profiles enable row level security;
 alter table public.posts enable row level security;
 alter table public.plans enable row level security;
 alter table public.knowledge enable row level security;
+alter table public.messages enable row level security;
 alter table public.notification_reads enable row level security;
 
 drop policy if exists "profiles_select_authenticated" on public.profiles;
@@ -163,6 +179,25 @@ create policy "knowledge_delete_owner"
 on public.knowledge for delete
 to authenticated
 using (auth.uid() = user_id);
+
+drop policy if exists "messages_select_owner" on public.messages;
+create policy "messages_select_owner"
+on public.messages for select
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "messages_insert_authenticated" on public.messages;
+create policy "messages_insert_authenticated"
+on public.messages for insert
+to authenticated
+with check (auth.uid() = actor_id);
+
+drop policy if exists "messages_update_owner" on public.messages;
+create policy "messages_update_owner"
+on public.messages for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
 
 drop policy if exists "notification_reads_select_owner" on public.notification_reads;
 create policy "notification_reads_select_owner"

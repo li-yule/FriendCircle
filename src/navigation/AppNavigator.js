@@ -66,51 +66,7 @@ function ProfileStack() {
 function MainTabs() {
   const { state } = useApp();
   const currentUser = state.currentUser;
-  const myPosts = (state.posts || []).filter(post => post.userId === currentUser?.id);
-  const myKnowledge = (state.knowledge || []).filter(item => item.userId === currentUser?.id);
-  const currentNotification = state.notifications?.[currentUser?.id] || {};
-  const readInteractionIds = new Set(state.notifications?.[currentUser?.id]?.readInteractionIds || []);
-  const commentsReadAtTs = currentNotification?.commentsReadAt ? new Date(currentNotification.commentsReadAt).getTime() : 0;
-
-  const stableInteractionKeyOf = (sourceType, sourceId, comment) => {
-    const fromUserId = comment?.userId || 'unknown';
-    const createdAt = comment?.createdAt || 'unknown';
-    const text = String(comment?.text || '').trim();
-    return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
-  };
-
-  const idInteractionKeyOf = (sourceType, sourceId, comment) => {
-    return `${sourceType}:${comment?.id || 'unknown'}`;
-  };
-
-  const isRead = (sourceType, sourceId, comment) => {
-    if (
-      readInteractionIds.has(stableInteractionKeyOf(sourceType, sourceId, comment)) ||
-      readInteractionIds.has(idInteractionKeyOf(sourceType, sourceId, comment))
-    ) {
-      return true;
-    }
-    if (readInteractionIds.size > 0) return false;
-    const interactionTs = comment?.createdAt ? new Date(comment.createdAt).getTime() : 0;
-    if (!interactionTs || !commentsReadAtTs) return false;
-    return interactionTs <= commentsReadAtTs;
-  };
-
-  const unreadPostInteractions = myPosts.reduce((sum, post) => {
-    const next = (post.comments || [])
-      .filter(comment => comment.userId !== currentUser?.id)
-      .filter(comment => !isRead('post', post.id, comment)).length;
-    return sum + next;
-  }, 0);
-
-  const unreadKnowledgeInteractions = myKnowledge.reduce((sum, item) => {
-    const next = (item.comments || [])
-      .filter(comment => comment.userId !== currentUser?.id)
-      .filter(comment => !isRead('knowledge', item.id, comment)).length;
-    return sum + next;
-  }, 0);
-
-  const unreadInteractions = unreadPostInteractions + unreadKnowledgeInteractions;
+  const unreadInteractions = Number(state.notifications?.[currentUser?.id]?.unreadCount || 0);
 
   return (
     <Tab.Navigator

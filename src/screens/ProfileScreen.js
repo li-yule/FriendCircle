@@ -23,74 +23,29 @@ export default function ProfileScreen({ navigation }) {
   const [bioInput, setBioInput] = useState(safeCurrentUser.bio || '');
   const [avatarInput, setAvatarInput] = useState(safeCurrentUser.avatar || null);
   const [savingProfile, setSavingProfile] = useState(false);
-  const currentNotification = state.notifications?.[currentUserId] || {};
-  const readInteractionIds = new Set(state.notifications?.[currentUserId]?.readInteractionIds || []);
-  const commentsReadAtTs = currentNotification?.commentsReadAt ? new Date(currentNotification.commentsReadAt).getTime() : 0;
+  const inbox = state.notifications?.[currentUserId] || { unreadCount: 0, interactions: [] };
 
   const myPosts = currentUserId ? posts.filter(p => p.userId === currentUserId) : [];
   const myPlans = currentUserId ? plans.filter(p => p.userId === currentUserId) : [];
-  const stableInteractionKeyOf = (interaction) => {
-    const sourceType = interaction?.sourceType || 'unknown';
-    const sourceId = interaction?.sourceId || 'unknown';
-    const fromUserId = interaction?.fromUserId || interaction?.fromUser?.id || 'unknown';
-    const createdAt = interaction?.createdAt || 'unknown';
-    const text = String(interaction?.text || '').trim();
-    return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
-  };
-  const idInteractionKeyOf = (interaction) => `${interaction?.sourceType || 'unknown'}:${interaction?.id || 'unknown'}`;
-  const isInteractionRead = (interaction) => {
-    if (readInteractionIds.has(stableInteractionKeyOf(interaction)) || readInteractionIds.has(idInteractionKeyOf(interaction))) {
-      return true;
-    }
-    if (readInteractionIds.size > 0) return false;
-    const interactionTs = interaction?.createdAt ? new Date(interaction.createdAt).getTime() : 0;
-    if (!interactionTs || !commentsReadAtTs) return false;
-    return interactionTs <= commentsReadAtTs;
-  };
   const incomingInteractions = useMemo(() => {
-    const postInteractions = myPosts.flatMap(post =>
-      (post.comments || [])
-        .filter(comment => comment.userId !== currentUserId)
-        .map(comment => ({
-          id: comment.id,
-          sourceType: 'post',
-          sourceId: post.id,
-            fromUserId: comment.userId,
-          sourcePreview: post.text || '动态内容',
-          fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
-          isReplyToMe: comment.replyToUserId === currentUserId,
-          text: comment.text || '',
-          createdAt: comment.createdAt,
-        }))
-    );
-
-    const knowledgeInteractions = (knowledge || [])
-      .filter(item => item.userId === currentUserId)
-      .flatMap(item =>
-        (item.comments || [])
-          .filter(comment => comment.userId !== currentUserId)
-          .map(comment => ({
-            id: comment.id,
-            sourceType: 'knowledge',
-            sourceId: item.id,
-            fromUserId: comment.userId,
-            sourcePreview: item.question || '知识内容',
-            fromUser: users.find(u => u.id === comment.userId) || { name: '未知', avatarColor: '#ccc' },
-            isReplyToMe: comment.replyToUserId === currentUserId,
-            text: comment.text || '',
-            createdAt: comment.createdAt,
-          }))
-      );
-
-    return [...postInteractions, ...knowledgeInteractions]
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-      .slice(0, 30);
-  }, [currentUserId, knowledge, myPosts, users]);
-  const unreadInteractions = useMemo(
-    () => incomingInteractions.filter(item => !isInteractionRead(item)),
-    [incomingInteractions, readInteractionIds]
-  );
-  const incomingCommentCount = unreadInteractions.length;
+    return (inbox.interactions || []).map(item => {
+      const fromUser = users.find(u => u.id === item.actorId) || { name: '未知', avatarColor: '#ccc' };
+      return {
+        id: item.id,
+        sourceType: item.sourceType,
+        sourceId: item.sourceId,
+        fromUserId: item.actorId,
+        sourcePreview: item.sourcePreview || (item.sourceType === 'post' ? '动态内容' : '知识内容'),
+        fromUser,
+        isReplyToMe: true,
+        text: item.content || '',
+        createdAt: item.createdAt,
+        isRead: Number(item.isRead || 0) === 1,
+      };
+    });
+  }, [inbox.interactions, users]);
+  const unreadInteractions = useMemo(() => incomingInteractions.filter(item => !item.isRead), [incomingInteractions]);
+  const incomingCommentCount = Number(inbox.unreadCount || 0);
     const myPlanDailyProgress = useMemo(() => {
       const map = new Map();
       myPlans.forEach(plan => {
@@ -292,18 +247,17 @@ export default function ProfileScreen({ navigation }) {
     );
   };
 
-  const markInteractionAsRead = async (interaction) => {
-    const keysToMark = [
-      stableInteractionKeyOf(interaction),
-      idInteractionKeyOf(interaction),
-    ].filter(Boolean);
+  useEffect(() => {
+    if (!currentUserId) return;
+    dispatch({ type: 'REFRESH_MESSAGE_INBOX', payload: { userId: currentUserId } });
+  }, [currentUserId]);
 
-    for (const interactionKey of keysToMark) {
-      await dispatch({
-        type: 'MARK_INTERACTION_READ',
-        payload: { userId: currentUserId, interactionKey, readAt: interaction?.createdAt || new Date().toISOString() },
-      });
-    }
+  const markInteractionAsRead = async (interaction) => {
+    if (!interaction?.id) return;
+    await dispatch({
+      type: 'MARK_INTERACTION_READ',
+      payload: { userId: currentUserId, messageId: interaction.id, readAt: interaction?.createdAt || new Date().toISOString() },
+    });
   };
 
   const openInteraction = async (interaction) => {
@@ -320,7 +274,13 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const handleToggleInteractions = () => {
-    setShowInteractions(prev => !prev);
+    setShowInteractions(prev => {
+      const next = !prev;
+      if (next) {
+        dispatch({ type: 'MARK_NOTIFICATIONS_READ', payload: { userId: currentUserId, readAt: new Date().toISOString() } });
+      }
+      return next;
+    });
   };
 
   return (
@@ -425,12 +385,12 @@ export default function ProfileScreen({ navigation }) {
               <Ionicons name="close" size={18} color="#999" />
             </TouchableOpacity>
           </View>
-          {unreadInteractions.length === 0 ? (
+          {incomingInteractions.length === 0 ? (
             <Text style={styles.tipText}>暂无互动</Text>
-          ) : unreadInteractions.map(item => (
+          ) : incomingInteractions.map(item => (
             <TouchableOpacity key={`${item.sourceType}_${item.id}`} style={styles.interactionItem} onPress={() => openInteraction(item)}>
               <Avatar user={item.fromUser} size={28} />
-              <View style={styles.unreadDot} />
+              {!item.isRead && <View style={styles.unreadDot} />}
               <View style={styles.interactionTextWrap}>
                 <Text style={styles.interactionTitle}>{item.fromUser.name}{item.isReplyToMe ? ' 回复了你' : ' 评论了你'}</Text>
                 <Text style={styles.interactionMeta} numberOfLines={1}>

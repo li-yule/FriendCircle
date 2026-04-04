@@ -284,6 +284,28 @@ function normalizeKnowledge(item) {
   };
 }
 
+function normalizeMessage(item) {
+  return {
+    id: item?.id || '',
+    userId: item?.userId || item?.user_id || '',
+    actorId: item?.actorId || item?.actor_id || '',
+    sourceType: item?.sourceType || item?.source_type || 'post',
+    sourceId: item?.sourceId || item?.source_id || '',
+    sourcePreview: item?.sourcePreview || item?.source_preview || '',
+    content: item?.content || '',
+    createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
+    isRead: Number(item?.isRead ?? item?.is_read ?? 0) === 1 ? 1 : 0,
+  };
+}
+
+function normalizeInbox(inbox) {
+  const value = inbox && typeof inbox === 'object' ? inbox : {};
+  return {
+    unreadCount: Number(value.unreadCount || 0),
+    interactions: ensureArray(value.interactions).map(normalizeMessage),
+  };
+}
+
 function serializeProfile(user) {
   return {
     id: user.id,
@@ -509,6 +531,26 @@ function reducer(state, action) {
           [userId]: {
             ...currentUserNotification,
             commentsReadAt: action.payload?.readAt || new Date().toISOString(),
+          },
+        },
+      };
+    }
+
+    case 'SET_MESSAGE_INBOX': {
+      const userId = action.payload?.userId;
+      if (!userId) return state;
+      const currentMap = normalizeNotifications(state.notifications);
+      const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
+      const inbox = normalizeInbox(action.payload?.inbox);
+
+      return {
+        ...state,
+        notifications: {
+          ...currentMap,
+          [userId]: {
+            ...currentUserNotification,
+            unreadCount: inbox.unreadCount,
+            interactions: inbox.interactions,
           },
         },
       };
@@ -969,6 +1011,58 @@ async function fetchCloudNotificationState(userId) {
   });
 }
 
+async function fetchMessageInbox(userId) {
+  if (!userId) return normalizeInbox({ unreadCount: 0, interactions: [] });
+
+  const [countRes, listRes] = await Promise.all([
+    supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_read', 0),
+    supabase
+      .from('messages')
+      .select('id,user_id,actor_id,source_type,source_id,source_preview,content,created_at,is_read')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(80),
+  ]);
+
+  if (countRes.error) throw countRes.error;
+  if (listRes.error) throw listRes.error;
+
+  return normalizeInbox({
+    unreadCount: Number(countRes.count || 0),
+    interactions: listRes.data || [],
+  });
+}
+
+async function markAllMessagesRead(userId) {
+  if (!userId) return normalizeInbox({ unreadCount: 0, interactions: [] });
+
+  const { error } = await supabase
+    .from('messages')
+    .update({ is_read: 1 })
+    .eq('user_id', userId)
+    .eq('is_read', 0);
+
+  if (error) throw error;
+  return fetchMessageInbox(userId);
+}
+
+async function markOneMessageRead(userId, messageId) {
+  if (!userId || !messageId) return fetchMessageInbox(userId);
+
+  const { error } = await supabase
+    .from('messages')
+    .update({ is_read: 1 })
+    .eq('id', messageId)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+  return fetchMessageInbox(userId);
+}
+
 async function saveCloudNotificationState(userId, entry) {
   if (!userId) return;
   const normalized = normalizeNotificationEntry(entry);
@@ -1186,10 +1280,22 @@ export function AppProvider({ children }) {
       const mergedUserNotification = cloudNotification
         ? normalizeNotificationEntry(cloudNotification)
         : normalizeNotificationEntry(userNotifications);
+      const inbox = await fetchMessageInbox(userId).catch(() => normalizeInbox({ unreadCount: 0, interactions: [] }));
 
       snapshot.notifications = {
         ...normalizeNotifications(cachedNotifications),
-        ...(mergedUserNotification ? { [userId]: mergedUserNotification } : {}),
+        ...(mergedUserNotification ? {
+          [userId]: {
+            ...mergedUserNotification,
+            unreadCount: inbox.unreadCount,
+            interactions: inbox.interactions,
+          },
+        } : {
+          [userId]: {
+            unreadCount: inbox.unreadCount,
+            interactions: inbox.interactions,
+          },
+        }),
       };
       baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
 
@@ -1345,6 +1451,16 @@ export function AppProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
         if (shouldMuteTableSync('knowledge')) return;
         scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+        const userId = cloudUserIdRef.current;
+        if (!userId) return;
+        fetchMessageInbox(userId)
+          .then(inbox => {
+            if (!active) return;
+            baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId, inbox } });
+          })
+          .catch(() => {});
       })
       .subscribe();
 
@@ -1545,11 +1661,14 @@ export function AppProvider({ children }) {
       if (action.type === 'MARK_NOTIFICATIONS_READ') {
         const userId = action.payload?.userId;
         if (!userId) return { ok: true };
+        const inbox = await markAllMessagesRead(userId);
         const currentMap = normalizeNotifications(stateRef.current.notifications);
         const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
         const nextUserNotification = {
           ...currentUserNotification,
           commentsReadAt: action.payload?.readAt || new Date().toISOString(),
+          unreadCount: inbox.unreadCount,
+          interactions: inbox.interactions,
         };
         const nextMap = {
           ...currentMap,
@@ -1557,27 +1676,48 @@ export function AppProvider({ children }) {
         };
 
         await saveCloudNotificationState(userId, nextUserNotification);
-        baseDispatch(action);
+        baseDispatch({ type: 'MARK_NOTIFICATIONS_READ', payload: { userId, readAt: nextUserNotification.commentsReadAt } });
+        baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId, inbox } });
         await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
         await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
         return { ok: true };
       }
 
-      if (action.type === 'MARK_INTERACTION_READ') {
-        const userId = action.payload?.userId;
-        const interactionKey = String(action.payload?.interactionKey || '').trim();
-        if (!userId || !interactionKey) return { ok: true };
+      if (action.type === 'REFRESH_MESSAGE_INBOX') {
+        const userId = action.payload?.userId || stateRef.current.currentUser?.id;
+        if (!userId) return { ok: true };
+        const inbox = await fetchMessageInbox(userId);
+        baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId, inbox } });
+
         const currentMap = normalizeNotifications(stateRef.current.notifications);
         const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
-        const currentReadIds = currentUserNotification.readInteractionIds;
-        const nextReadIds = currentReadIds.includes(interactionKey)
-          ? currentReadIds
-          : [...currentReadIds, interactionKey];
+        const nextUserNotification = {
+          ...currentUserNotification,
+          unreadCount: inbox.unreadCount,
+          interactions: inbox.interactions,
+        };
+        const nextMap = {
+          ...currentMap,
+          [userId]: nextUserNotification,
+        };
+        await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
+        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
+        return { ok: true, inbox };
+      }
+
+      if (action.type === 'MARK_INTERACTION_READ') {
+        const userId = action.payload?.userId;
+        const messageId = String(action.payload?.messageId || '').trim();
+        if (!userId || !messageId) return { ok: true };
+        const inbox = await markOneMessageRead(userId, messageId);
+        const currentMap = normalizeNotifications(stateRef.current.notifications);
+        const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
         const nextReadAt = action.payload?.readAt || new Date().toISOString();
         const nextUserNotification = {
           ...currentUserNotification,
-          readInteractionIds: normalizeReadInteractionIds(nextReadIds),
           commentsReadAt: pickLatestTimestamp(currentUserNotification.commentsReadAt, nextReadAt),
+          unreadCount: inbox.unreadCount,
+          interactions: inbox.interactions,
         };
         const nextMap = {
           ...currentMap,
@@ -1585,7 +1725,8 @@ export function AppProvider({ children }) {
         };
 
         await saveCloudNotificationState(userId, nextUserNotification);
-        baseDispatch(action);
+        baseDispatch({ type: 'MARK_INTERACTION_READ', payload: { userId, interactionKey: messageId, readAt: nextReadAt } });
+        baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId, inbox } });
         await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
         await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
         return { ok: true };
@@ -1774,6 +1915,19 @@ export function AppProvider({ children }) {
         if (action.type === 'DELETE_COMMENT') {
           baseDispatch(action);
         }
+
+        if (action.type === 'ADD_COMMENT' && optimisticComment && post.userId !== currentUser.id) {
+          await supabase.from('messages').insert({
+            user_id: post.userId,
+            actor_id: currentUser.id,
+            source_type: 'post',
+            source_id: postId,
+            source_preview: String(post.text || '').slice(0, 120),
+            content: String(optimisticComment.text || ''),
+            is_read: 0,
+          });
+        }
+
         return { ok: true };
       } else if (action.type === 'ADD_PLAN') {
         markLocalMutation('plans');
@@ -1878,6 +2032,19 @@ export function AppProvider({ children }) {
           baseDispatch({ type: 'DELETE_KNOWLEDGE_COMMENT', payload: { knowledgeId: item.id, commentId: uploadedComment.id } });
           return { ok: false, error: '评论失败' };
         }
+
+        if (item.userId !== currentUser.id) {
+          await supabase.from('messages').insert({
+            user_id: item.userId,
+            actor_id: currentUser.id,
+            source_type: 'knowledge',
+            source_id: item.id,
+            source_preview: String(item.question || '').slice(0, 120),
+            content: String(uploadedComment.text || ''),
+            is_read: 0,
+          });
+        }
+
         return { ok: true };
       } else {
         baseDispatch(action);
