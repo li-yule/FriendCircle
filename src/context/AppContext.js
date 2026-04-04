@@ -212,6 +212,13 @@ function mergeNotificationEntries(primary, secondary) {
   };
 }
 
+function pickLatestTimestamp(a, b) {
+  const first = a ? new Date(a).getTime() : 0;
+  const second = b ? new Date(b).getTime() : 0;
+  if (first >= second) return a || null;
+  return b || null;
+}
+
 function normalizeAudioFile(file) {
   return {
     name: file?.name || '语音文件',
@@ -514,6 +521,7 @@ function reducer(state, action) {
       const currentMap = normalizeNotifications(state.notifications);
       const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
       const currentReadIds = currentUserNotification.readInteractionIds;
+      const nextReadAt = action.payload?.readAt || new Date().toISOString();
       if (currentReadIds.includes(interactionKey)) return state;
       return {
         ...state,
@@ -522,6 +530,7 @@ function reducer(state, action) {
           [userId]: {
             ...currentUserNotification,
             readInteractionIds: [...currentReadIds, interactionKey],
+            commentsReadAt: pickLatestTimestamp(currentUserNotification.commentsReadAt, nextReadAt),
           },
         },
       };
@@ -1564,9 +1573,11 @@ export function AppProvider({ children }) {
         const nextReadIds = currentReadIds.includes(interactionKey)
           ? currentReadIds
           : [...currentReadIds, interactionKey];
+        const nextReadAt = action.payload?.readAt || new Date().toISOString();
         const nextUserNotification = {
           ...currentUserNotification,
           readInteractionIds: normalizeReadInteractionIds(nextReadIds),
+          commentsReadAt: pickLatestTimestamp(currentUserNotification.commentsReadAt, nextReadAt),
         };
         const nextMap = {
           ...currentMap,

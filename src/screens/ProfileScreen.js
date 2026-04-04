@@ -23,7 +23,9 @@ export default function ProfileScreen({ navigation }) {
   const [bioInput, setBioInput] = useState(safeCurrentUser.bio || '');
   const [avatarInput, setAvatarInput] = useState(safeCurrentUser.avatar || null);
   const [savingProfile, setSavingProfile] = useState(false);
+  const currentNotification = state.notifications?.[currentUserId] || {};
   const readInteractionIds = new Set(state.notifications?.[currentUserId]?.readInteractionIds || []);
+  const commentsReadAtTs = currentNotification?.commentsReadAt ? new Date(currentNotification.commentsReadAt).getTime() : 0;
 
   const myPosts = currentUserId ? posts.filter(p => p.userId === currentUserId) : [];
   const myPlans = currentUserId ? plans.filter(p => p.userId === currentUserId) : [];
@@ -36,8 +38,15 @@ export default function ProfileScreen({ navigation }) {
     return `${sourceType}:${sourceId}:${fromUserId}:${createdAt}:${text}`;
   };
   const idInteractionKeyOf = (interaction) => `${interaction?.sourceType || 'unknown'}:${interaction?.id || 'unknown'}`;
-  const isInteractionRead = (interaction) =>
-    readInteractionIds.has(stableInteractionKeyOf(interaction)) || readInteractionIds.has(idInteractionKeyOf(interaction));
+  const isInteractionRead = (interaction) => {
+    if (readInteractionIds.has(stableInteractionKeyOf(interaction)) || readInteractionIds.has(idInteractionKeyOf(interaction))) {
+      return true;
+    }
+    if (readInteractionIds.size > 0) return false;
+    const interactionTs = interaction?.createdAt ? new Date(interaction.createdAt).getTime() : 0;
+    if (!interactionTs || !commentsReadAtTs) return false;
+    return interactionTs <= commentsReadAtTs;
+  };
   const incomingInteractions = useMemo(() => {
     const postInteractions = myPosts.flatMap(post =>
       (post.comments || [])
@@ -292,7 +301,7 @@ export default function ProfileScreen({ navigation }) {
     for (const interactionKey of keysToMark) {
       await dispatch({
         type: 'MARK_INTERACTION_READ',
-        payload: { userId: currentUserId, interactionKey },
+        payload: { userId: currentUserId, interactionKey, readAt: interaction?.createdAt || new Date().toISOString() },
       });
     }
   };
