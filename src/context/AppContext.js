@@ -177,6 +177,41 @@ function normalizeNotifications(value) {
   return value;
 }
 
+function normalizeReadInteractionIds(value) {
+  if (!Array.isArray(value)) return [];
+  return toUniqueStrings(value.map(item => String(item || '').trim()).filter(Boolean));
+}
+
+function normalizeNotificationEntry(value) {
+  const entry = value && typeof value === 'object' ? value : {};
+  const commentsReadAt = entry.commentsReadAt || entry.comments_read_at || null;
+  return {
+    ...entry,
+    commentsReadAt: commentsReadAt || null,
+    readInteractionIds: normalizeReadInteractionIds(entry.readInteractionIds || entry.read_interaction_ids),
+  };
+}
+
+function mergeNotificationEntries(primary, secondary) {
+  const first = normalizeNotificationEntry(primary);
+  const second = normalizeNotificationEntry(secondary);
+  const readInteractionIds = normalizeReadInteractionIds([
+    ...first.readInteractionIds,
+    ...second.readInteractionIds,
+  ]);
+
+  const firstReadAt = first.commentsReadAt ? new Date(first.commentsReadAt).getTime() : 0;
+  const secondReadAt = second.commentsReadAt ? new Date(second.commentsReadAt).getTime() : 0;
+  const commentsReadAt = firstReadAt >= secondReadAt ? first.commentsReadAt : second.commentsReadAt;
+
+  return {
+    ...second,
+    ...first,
+    commentsReadAt: commentsReadAt || null,
+    readInteractionIds,
+  };
+}
+
 function normalizeAudioFile(file) {
   return {
     name: file?.name || '语音文件',
@@ -459,12 +494,13 @@ function reducer(state, action) {
       const userId = action.payload?.userId;
       if (!userId) return state;
       const currentMap = normalizeNotifications(state.notifications);
+      const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
       return {
         ...state,
         notifications: {
           ...currentMap,
           [userId]: {
-            ...(currentMap[userId] || {}),
+            ...currentUserNotification,
             commentsReadAt: action.payload?.readAt || new Date().toISOString(),
           },
         },
@@ -476,10 +512,8 @@ function reducer(state, action) {
       const interactionKey = String(action.payload?.interactionKey || '').trim();
       if (!userId || !interactionKey) return state;
       const currentMap = normalizeNotifications(state.notifications);
-      const currentUserNotification = currentMap[userId] || {};
-      const currentReadIds = Array.isArray(currentUserNotification.readInteractionIds)
-        ? currentUserNotification.readInteractionIds
-        : [];
+      const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
+      const currentReadIds = currentUserNotification.readInteractionIds;
       if (currentReadIds.includes(interactionKey)) return state;
       return {
         ...state,
@@ -909,6 +943,41 @@ async function fetchCloudState(currentUserId) {
   }, currentUserId);
 }
 
+async function fetchCloudNotificationState(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('notification_reads')
+    .select('user_id,read_interaction_ids,last_read_time')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return normalizeNotificationEntry({
+    comments_read_at: data.last_read_time,
+    read_interaction_ids: data.read_interaction_ids,
+  });
+}
+
+async function saveCloudNotificationState(userId, entry) {
+  if (!userId) return;
+  const normalized = normalizeNotificationEntry(entry);
+
+  const payload = {
+    user_id: userId,
+    read_interaction_ids: normalized.readInteractionIds,
+    last_read_time: normalized.commentsReadAt || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('notification_reads')
+    .upsert(payload, { onConflict: 'user_id' });
+
+  if (error) throw error;
+}
+
 async function fetchCloudPatch(tables) {
   const wanted = new Set(ensureArray(tables));
   const tasks = [];
@@ -1089,6 +1158,14 @@ export function AppProvider({ children }) {
       const snapshot = await fetchCloudState(userId);
       if (!active) return;
       cloudUserIdRef.current = userId;
+
+      let cloudNotification = null;
+      try {
+        cloudNotification = await fetchCloudNotificationState(userId);
+      } catch {
+        cloudNotification = null;
+      }
+
       const userNotificationsRaw = await AsyncStorage.getItem(getNotificationUserCacheKey(userId));
       let userNotifications = null;
       try {
@@ -1096,11 +1173,23 @@ export function AppProvider({ children }) {
       } catch {
         userNotifications = null;
       }
+
+      const mergedUserNotification = mergeNotificationEntries(
+        cloudNotification,
+        userNotifications
+      );
+
       snapshot.notifications = {
         ...normalizeNotifications(cachedNotifications),
-        ...(userNotifications ? { [userId]: userNotifications } : {}),
+        ...(mergedUserNotification ? { [userId]: mergedUserNotification } : {}),
       };
       baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+
+      if (mergedUserNotification) {
+        AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(mergedUserNotification)).catch(() => {});
+        saveCloudNotificationState(userId, mergedUserNotification).catch(() => {});
+      }
+
       const currentUserSnapshot = serializeCurrentUserSnapshot(snapshot.currentUser);
       if (currentUserSnapshot) {
         AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot)).catch(() => {});
@@ -1445,47 +1534,48 @@ export function AppProvider({ children }) {
 
       if (action.type === 'MARK_NOTIFICATIONS_READ') {
         const userId = action.payload?.userId;
+        if (!userId) return { ok: true };
         const currentMap = normalizeNotifications(stateRef.current.notifications);
+        const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
+        const nextUserNotification = {
+          ...currentUserNotification,
+          commentsReadAt: action.payload?.readAt || new Date().toISOString(),
+        };
         const nextMap = {
           ...currentMap,
-          [userId]: {
-            ...(currentMap[userId] || {}),
-            commentsReadAt: action.payload?.readAt || new Date().toISOString(),
-          },
+          [userId]: nextUserNotification,
         };
 
         baseDispatch(action);
         await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-        if (userId) {
-          await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
-        }
+        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
+        await saveCloudNotificationState(userId, nextUserNotification).catch(() => {});
         return { ok: true };
       }
 
       if (action.type === 'MARK_INTERACTION_READ') {
         const userId = action.payload?.userId;
         const interactionKey = String(action.payload?.interactionKey || '').trim();
+        if (!userId || !interactionKey) return { ok: true };
         const currentMap = normalizeNotifications(stateRef.current.notifications);
-        const currentUserNotification = currentMap[userId] || {};
-        const currentReadIds = Array.isArray(currentUserNotification.readInteractionIds)
-          ? currentUserNotification.readInteractionIds
-          : [];
+        const currentUserNotification = normalizeNotificationEntry(currentMap[userId]);
+        const currentReadIds = currentUserNotification.readInteractionIds;
         const nextReadIds = currentReadIds.includes(interactionKey)
           ? currentReadIds
           : [...currentReadIds, interactionKey];
+        const nextUserNotification = {
+          ...currentUserNotification,
+          readInteractionIds: normalizeReadInteractionIds(nextReadIds),
+        };
         const nextMap = {
           ...currentMap,
-          [userId]: {
-            ...currentUserNotification,
-            readInteractionIds: nextReadIds,
-          },
+          [userId]: nextUserNotification,
         };
 
         baseDispatch(action);
         await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
-        if (userId) {
-          await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextMap[userId] || {}));
-        }
+        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
+        await saveCloudNotificationState(userId, nextUserNotification).catch(() => {});
         return { ok: true };
       }
 
