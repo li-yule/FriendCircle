@@ -297,22 +297,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  useEffect(() => {
-    if (!showInteractions || !currentUserId || unreadInteractions.length === 0) return;
-
-    let active = true;
-    (async () => {
-      for (const interaction of unreadInteractions) {
-        if (!active) break;
-        await markInteractionAsRead(interaction);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [showInteractions, currentUserId, unreadInteractions]);
-
   const openInteraction = async (interaction) => {
     await markInteractionAsRead(interaction);
 
