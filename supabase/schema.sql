@@ -196,8 +196,7 @@ drop policy if exists "messages_update_owner" on public.messages;
 create policy "messages_update_owner"
 on public.messages for update
 to authenticated
-using (auth.uid() = user_id)
-with check (auth.uid() = user_id);
+using (auth.uid() = user_id);
 
 drop policy if exists "notification_reads_select_owner" on public.notification_reads;
 create policy "notification_reads_select_owner"

@@ -1016,17 +1016,26 @@ async function fetchMessageInbox(userId) {
 
   const [countRes, listRes] = await Promise.all([
     supabase
+      .schema('public')
       .from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('is_read', 0),
     supabase
+      .schema('public')
       .from('messages')
       .select('id,user_id,actor_id,source_type,source_id,source_preview,content,created_at,is_read')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(80),
   ]);
+
+  if (countRes.error?.message?.includes('relation "messages" does not exist')) {
+    throw new Error('messages 表不存在，请先在 Supabase SQL Editor 执行建表 SQL。');
+  }
+  if (listRes.error?.message?.includes('relation "messages" does not exist')) {
+    throw new Error('messages 表不存在，请先在 Supabase SQL Editor 执行建表 SQL。');
+  }
 
   if (countRes.error) throw countRes.error;
   if (listRes.error) throw listRes.error;
@@ -1040,13 +1049,55 @@ async function fetchMessageInbox(userId) {
 async function markAllMessagesRead(userId) {
   if (!userId) return normalizeInbox({ unreadCount: 0, interactions: [] });
 
-  const { error } = await supabase
+  const { data, error } = await supabase
+    .schema('public')
     .from('messages')
     .update({ is_read: 1 })
     .eq('user_id', userId)
-    .eq('is_read', 0);
+    .eq('is_read', 0)
+    .select();
 
+  console.log('[markAllMessagesRead] 更新条数:', data?.length || 0, 'userId:', userId);
+
+  if (error?.message?.includes('relation "messages" does not exist')) {
+    throw new Error('messages 表不存在，请先在 Supabase SQL Editor 执行建表 SQL。');
+  }
   if (error) throw error;
+
+  if (!data || data.length === 0) {
+    const [{ data: authData }, { count: visibleUnreadCount, error: countError }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .schema('public')
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('is_read', 0),
+    ]);
+
+    if (countError) {
+      console.warn('[markAllMessagesRead] 诊断查询失败:', countError.message);
+    } else if ((visibleUnreadCount || 0) > 0) {
+      console.warn(
+        '[markAllMessagesRead] 可见未读仍大于0但更新条数为0，可能是RLS策略限制了UPDATE或WITH CHECK不满足。',
+        'auth.uid=',
+        authData?.user?.id,
+        'targetUserId=',
+        userId,
+        'visibleUnreadCount=',
+        visibleUnreadCount,
+      );
+    } else {
+      console.warn(
+        '[markAllMessagesRead] 更新条数为0，当前可见未读为0，通常是已无未读或user_id过滤条件不匹配。',
+        'auth.uid=',
+        authData?.user?.id,
+        'targetUserId=',
+        userId,
+      );
+    }
+  }
+
   return fetchMessageInbox(userId);
 }
 
@@ -1054,10 +1105,15 @@ async function markOneMessageRead(userId, messageId) {
   if (!userId || !messageId) return fetchMessageInbox(userId);
 
   const { error } = await supabase
+    .schema('public')
     .from('messages')
     .update({ is_read: 1 })
     .eq('id', messageId)
     .eq('user_id', userId);
+
+  if (error?.message?.includes('relation "messages" does not exist')) {
+    throw new Error('messages 表不存在，请先在 Supabase SQL Editor 执行建表 SQL。');
+  }
 
   if (error) throw error;
   return fetchMessageInbox(userId);
@@ -1280,7 +1336,10 @@ export function AppProvider({ children }) {
       const mergedUserNotification = cloudNotification
         ? normalizeNotificationEntry(cloudNotification)
         : normalizeNotificationEntry(userNotifications);
-      const inbox = await fetchMessageInbox(userId).catch(() => normalizeInbox({ unreadCount: 0, interactions: [] }));
+      const inbox = await fetchMessageInbox(userId).catch((err) => {
+        console.warn('[hydrate] 拉取 messages inbox 失败:', err?.message || err);
+        return normalizeInbox({ unreadCount: 0, interactions: [] });
+      });
 
       snapshot.notifications = {
         ...normalizeNotifications(cachedNotifications),
@@ -1452,13 +1511,14 @@ export function AppProvider({ children }) {
         if (shouldMuteTableSync('knowledge')) return;
         scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
-        const userId = cloudUserIdRef.current;
-        if (!userId) return;
-        fetchMessageInbox(userId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
+        const currentUserId = cloudUserIdRef.current;
+        const targetUserId = String(payload?.new?.user_id || payload?.old?.user_id || '');
+        if (!currentUserId || !targetUserId || targetUserId !== String(currentUserId)) return;
+        fetchMessageInbox(currentUserId)
           .then(inbox => {
             if (!active) return;
-            baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId, inbox } });
+            baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId: currentUserId, inbox } });
           })
           .catch(() => {});
       })
@@ -1917,7 +1977,7 @@ export function AppProvider({ children }) {
         }
 
         if (action.type === 'ADD_COMMENT' && optimisticComment && post.userId !== currentUser.id) {
-          await supabase.from('messages').insert({
+          const { error: messageError } = await supabase.schema('public').from('messages').insert({
             user_id: post.userId,
             actor_id: currentUser.id,
             source_type: 'post',
@@ -1926,6 +1986,9 @@ export function AppProvider({ children }) {
             content: String(optimisticComment.text || ''),
             is_read: 0,
           });
+          if (messageError) {
+            console.warn('[ADD_COMMENT] 写入 messages 失败:', messageError.message);
+          }
         }
 
         return { ok: true };
@@ -2034,7 +2097,7 @@ export function AppProvider({ children }) {
         }
 
         if (item.userId !== currentUser.id) {
-          await supabase.from('messages').insert({
+          const { error: messageError } = await supabase.schema('public').from('messages').insert({
             user_id: item.userId,
             actor_id: currentUser.id,
             source_type: 'knowledge',
@@ -2043,6 +2106,9 @@ export function AppProvider({ children }) {
             content: String(uploadedComment.text || ''),
             is_read: 0,
           });
+          if (messageError) {
+            console.warn('[ADD_KNOWLEDGE_COMMENT] 写入 messages 失败:', messageError.message);
+          }
         }
 
         return { ok: true };
