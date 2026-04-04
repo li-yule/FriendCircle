@@ -134,9 +134,34 @@ function serializeCurrentUserSnapshot(user) {
   };
 }
 
+function hashString(value = '') {
+  let hash = 0;
+  const text = String(value);
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function buildStableLegacyCommentId(comment) {
+  const userId = comment?.userId || comment?.user_id || 'unknown';
+  const replyToUserId = comment?.replyToUserId || comment?.reply_to_user_id || '';
+  const createdAt = comment?.createdAt || comment?.created_at || '';
+  const text = String(comment?.text || '').trim();
+  const imagePart = toUniqueStrings(comment?.images).join('|');
+  const audioPart = ensureArray(comment?.audioFiles || comment?.audio_files)
+    .map(file => String(file?.uri || file?.name || '').trim())
+    .filter(Boolean)
+    .join('|');
+  const raw = `${userId}::${replyToUserId}::${createdAt}::${text}::${imagePart}::${audioPart}`;
+  return `legacy_${hashString(raw)}`;
+}
+
 function normalizeComment(comment) {
+  const commentId = String(comment?.id || '').trim() || buildStableLegacyCommentId(comment);
   return {
-    id: comment?.id || generateId(),
+    id: commentId,
     userId: comment?.userId || comment?.user_id || '',
     replyToUserId: comment?.replyToUserId || comment?.reply_to_user_id || '',
     replyToUserName: comment?.replyToUserName || comment?.reply_to_user_name || '',

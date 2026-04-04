@@ -283,12 +283,38 @@ export default function ProfileScreen({ navigation }) {
     );
   };
 
+  const markInteractionAsRead = async (interaction) => {
+    const keysToMark = [
+      stableInteractionKeyOf(interaction),
+      idInteractionKeyOf(interaction),
+    ].filter(Boolean);
+
+    for (const interactionKey of keysToMark) {
+      await dispatch({
+        type: 'MARK_INTERACTION_READ',
+        payload: { userId: currentUserId, interactionKey },
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!showInteractions || !currentUserId || unreadInteractions.length === 0) return;
+
+    let active = true;
+    (async () => {
+      for (const interaction of unreadInteractions) {
+        if (!active) break;
+        await markInteractionAsRead(interaction);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [showInteractions, currentUserId, unreadInteractions]);
+
   const openInteraction = async (interaction) => {
-    const interactionKey = stableInteractionKeyOf(interaction);
-    await dispatch({
-      type: 'MARK_INTERACTION_READ',
-      payload: { userId: currentUserId, interactionKey },
-    });
+    await markInteractionAsRead(interaction);
 
     if (interaction.sourceType === 'post') {
       navigation.navigate('PostDetail', { postId: interaction.sourceId });
