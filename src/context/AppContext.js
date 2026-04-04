@@ -1174,10 +1174,9 @@ export function AppProvider({ children }) {
         userNotifications = null;
       }
 
-      const mergedUserNotification = mergeNotificationEntries(
-        cloudNotification,
-        userNotifications
-      );
+      const mergedUserNotification = cloudNotification
+        ? normalizeNotificationEntry(cloudNotification)
+        : normalizeNotificationEntry(userNotifications);
 
       snapshot.notifications = {
         ...normalizeNotifications(cachedNotifications),
@@ -1187,7 +1186,9 @@ export function AppProvider({ children }) {
 
       if (mergedUserNotification) {
         AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(mergedUserNotification)).catch(() => {});
-        saveCloudNotificationState(userId, mergedUserNotification).catch(() => {});
+        if (!cloudNotification && userNotifications) {
+          saveCloudNotificationState(userId, mergedUserNotification).catch(() => {});
+        }
       }
 
       const currentUserSnapshot = serializeCurrentUserSnapshot(snapshot.currentUser);
@@ -1546,10 +1547,10 @@ export function AppProvider({ children }) {
           [userId]: nextUserNotification,
         };
 
+        await saveCloudNotificationState(userId, nextUserNotification);
         baseDispatch(action);
         await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
         await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
-        await saveCloudNotificationState(userId, nextUserNotification).catch(() => {});
         return { ok: true };
       }
 
@@ -1572,10 +1573,10 @@ export function AppProvider({ children }) {
           [userId]: nextUserNotification,
         };
 
+        await saveCloudNotificationState(userId, nextUserNotification);
         baseDispatch(action);
         await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
         await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
-        await saveCloudNotificationState(userId, nextUserNotification).catch(() => {});
         return { ok: true };
       }
 
