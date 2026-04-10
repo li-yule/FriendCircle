@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useReducer, useRef } from 'react';
+import { AppState } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1576,8 +1577,16 @@ export function AppProvider({ children }) {
 
     loadCloud();
 
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState !== 'active') return;
+      const userId = cloudUserIdRef.current;
+      if (!userId) return;
+      refreshCloudNow(userId, ['profiles', 'posts', 'plans', 'knowledge']).catch(() => {});
+    });
+
     return () => {
       active = false;
+      appStateSubscription.remove();
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
