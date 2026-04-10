@@ -1268,6 +1268,7 @@ async function withTimeout(taskPromise, timeoutMs, timeoutMessage) {
 export function AppProvider({ children }) {
   const [state, baseDispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(state);
+  const currentUserId = state.currentUser?.id || '';
   const cloudUserIdRef = useRef(null);
   const refreshTimerRef = useRef(null);
   const pollTimerRef = useRef(null);
@@ -1283,6 +1284,96 @@ export function AppProvider({ children }) {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUserId) return undefined;
+
+    let active = true;
+    const messageChannel = supabase
+      .channel(`friendcircle-messages-${currentUserId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `user_id=eq.${currentUserId}`,
+      }, (payload) => {
+        if (!active) return;
+
+        const insertedMessage = normalizeMessage(payload?.new);
+        const currentMap = normalizeNotifications(stateRef.current.notifications);
+        const currentUserNotification = normalizeNotificationEntry(currentMap[currentUserId]);
+        const mergedInteractions = [insertedMessage, ...currentUserNotification.interactions.filter(item => item.id !== insertedMessage.id)];
+        const unreadCount = mergedInteractions.filter(item => Number(item.isRead || 0) === 0).length;
+
+        const nextUserNotification = {
+          ...currentUserNotification,
+          unreadCount,
+          interactions: mergedInteractions,
+        };
+
+        baseDispatch({
+          type: 'SET_MESSAGE_INBOX',
+          payload: {
+            userId: currentUserId,
+            inbox: {
+              unreadCount,
+              interactions: mergedInteractions,
+            },
+          },
+        });
+
+        AsyncStorage.setItem(getNotificationUserCacheKey(currentUserId), JSON.stringify(nextUserNotification)).catch(() => {});
+        AsyncStorage.setItem(
+          NOTIFICATIONS_CACHE_KEY,
+          JSON.stringify({
+            ...currentMap,
+            [currentUserId]: nextUserNotification,
+          }),
+        ).catch(() => {});
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `user_id=eq.${currentUserId}`,
+      }, () => {
+        if (!active) return;
+        fetchMessageInbox(currentUserId)
+          .then(inbox => {
+            if (!active) return;
+            const currentMap = normalizeNotifications(stateRef.current.notifications);
+            const currentUserNotification = normalizeNotificationEntry(currentMap[currentUserId]);
+            const nextUserNotification = {
+              ...currentUserNotification,
+              unreadCount: inbox.unreadCount,
+              interactions: inbox.interactions,
+            };
+            baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId: currentUserId, inbox } });
+            AsyncStorage.setItem(getNotificationUserCacheKey(currentUserId), JSON.stringify(nextUserNotification)).catch(() => {});
+            AsyncStorage.setItem(
+              NOTIFICATIONS_CACHE_KEY,
+              JSON.stringify({
+                ...currentMap,
+                [currentUserId]: nextUserNotification,
+              }),
+            ).catch(() => {});
+          })
+          .catch(() => {});
+      })
+      .subscribe();
+
+    fetchMessageInbox(currentUserId)
+      .then(inbox => {
+        if (!active) return;
+        baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId: currentUserId, inbox } });
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+      supabase.removeChannel(messageChannel);
+    };
+  }, [currentUserId]);
 
   useEffect(() => {
     AsyncStorage
@@ -1551,17 +1642,6 @@ export function AppProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge' }, () => {
         if (shouldMuteTableSync('knowledge')) return;
         scheduleHydrate(cloudUserIdRef.current, ['knowledge']);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
-        const currentUserId = cloudUserIdRef.current;
-        const targetUserId = String(payload?.new?.user_id || payload?.old?.user_id || '');
-        if (!currentUserId || !targetUserId || targetUserId !== String(currentUserId)) return;
-        fetchMessageInbox(currentUserId)
-          .then(inbox => {
-            if (!active) return;
-            baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId: currentUserId, inbox } });
-          })
-          .catch(() => {});
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED' && cloudUserIdRef.current) {
