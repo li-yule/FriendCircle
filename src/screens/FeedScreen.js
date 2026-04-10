@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Image, ScrollView, Alert, KeyboardAvoidingView, Platform,
+  TextInput, Image, ScrollView, Alert, KeyboardAvoidingView, Platform, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -16,6 +16,7 @@ const COMMON_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😇', '🙂', '
 export default function FeedScreen({ navigation }) {
   const { state, dispatch } = useApp();
   const { posts, currentUser, users } = state;
+  const [refreshing, setRefreshing] = useState(false);
   const [commentInput, setCommentInput] = useState({});
   const [replyTarget, setReplyTarget] = useState({});
   const [expandedComments, setExpandedComments] = useState({});
@@ -110,6 +111,16 @@ export default function FeedScreen({ navigation }) {
       { text: '取消', style: 'cancel' },
       { text: '删除', style: 'destructive', onPress: () => dispatch({ type: 'DELETE_POST', payload: postId }) },
     ]);
+  };
+
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    const result = await dispatch({ type: 'REFRESH_CLOUD_STATE', payload: { userId: currentUser.id } });
+    setRefreshing(false);
+    if (!result?.ok) {
+      Alert.alert('刷新失败', result?.error || '请稍后重试');
+    }
   };
 
   const renderPost = ({ item }) => {
@@ -314,6 +325,7 @@ export default function FeedScreen({ navigation }) {
         data={visiblePosts}
         keyExtractor={item => item.id}
         renderItem={renderPost}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#C49A4B" />}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"

@@ -68,6 +68,25 @@ create table if not exists public.messages (
 create index if not exists idx_messages_user_unread on public.messages (user_id, is_read);
 create index if not exists idx_messages_user_created_at on public.messages (user_id, created_at desc);
 
+do $$
+declare
+  tables text[] := array['profiles', 'posts', 'plans', 'knowledge', 'messages'];
+  tbl text;
+begin
+  foreach tbl in array tables loop
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = tbl
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', tbl);
+    end if;
+  end loop;
+end
+$$;
+
 create table if not exists public.notification_reads (
   user_id uuid primary key references public.profiles (id) on delete cascade,
   read_interaction_ids text[] not null default '{}',

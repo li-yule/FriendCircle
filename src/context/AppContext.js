@@ -12,6 +12,7 @@ const CLOUD_CONFIG_REQUIRED_MESSAGE = '当前版本仅支持云端存储，请�
 const CLOUD_POSTS_LIMIT = 80;
 const CLOUD_PLANS_LIMIT = 80;
 const CLOUD_KNOWLEDGE_LIMIT = 80;
+const CLOUD_POLL_INTERVAL_MS = 12000;
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_UPLOAD_BYTES = 20 * 1024 * 1024;
 const LOCAL_MUTATION_MUTE_MS = 2500;
@@ -1249,6 +1250,7 @@ export function AppProvider({ children }) {
   const stateRef = useRef(state);
   const cloudUserIdRef = useRef(null);
   const refreshTimerRef = useRef(null);
+  const pollTimerRef = useRef(null);
   const pendingTablesRef = useRef(new Set());
   const authBootstrappingRef = useRef(true);
   const localMutationMuteRef = useRef({
@@ -1369,6 +1371,25 @@ export function AppProvider({ children }) {
       if (currentUserSnapshot) {
         AsyncStorage.setItem(CURRENT_USER_CACHE_KEY, JSON.stringify(currentUserSnapshot)).catch(() => {});
       }
+    };
+
+    const refreshCloudNow = async (userId, tables = ['profiles', 'posts', 'plans', 'knowledge']) => {
+      if (!userId) return;
+      const patch = await fetchCloudPatch(tables);
+      if (!active) return;
+
+      baseDispatch({
+        type: 'LOAD_STATE',
+        payload: applyCloudPatch(stateRef.current, patch, userId),
+      });
+
+      const inbox = await fetchMessageInbox(userId).catch((err) => {
+        console.warn('[refreshCloudNow] 拉取 messages inbox 失败:', err?.message || err);
+        return null;
+      });
+
+      if (!active || !inbox) return;
+      baseDispatch({ type: 'SET_MESSAGE_INBOX', payload: { userId, inbox } });
     };
 
     const restoreLocalAuthState = async () => {
@@ -1522,7 +1543,17 @@ export function AppProvider({ children }) {
           })
           .catch(() => {});
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' && cloudUserIdRef.current) {
+          refreshCloudNow(cloudUserIdRef.current, ['profiles', 'posts', 'plans', 'knowledge']).catch(() => {});
+        }
+      });
+
+    pollTimerRef.current = setInterval(() => {
+      const userId = cloudUserIdRef.current;
+      if (!userId || !active) return;
+      refreshCloudNow(userId, ['posts', 'plans', 'knowledge']).catch(() => {});
+    }, CLOUD_POLL_INTERVAL_MS);
 
     loadCloud();
 
@@ -1531,6 +1562,10 @@ export function AppProvider({ children }) {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
+      }
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
       }
       pendingTablesRef.current.clear();
       authListener.subscription.unsubscribe();
@@ -1763,6 +1798,40 @@ export function AppProvider({ children }) {
         await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextMap));
         await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
         return { ok: true, inbox };
+      }
+
+      if (action.type === 'REFRESH_CLOUD_STATE') {
+        const userId = action.payload?.userId || cloudUserIdRef.current || stateRef.current.currentUser?.id;
+        if (!userId) return { ok: false, error: '请先登录' };
+
+        const [snapshot, cloudNotification, inbox] = await Promise.all([
+          fetchCloudState(userId),
+          fetchCloudNotificationState(userId).catch(() => null),
+          fetchMessageInbox(userId).catch((err) => {
+            console.warn('[REFRESH_CLOUD_STATE] 拉取 messages inbox 失败:', err?.message || err);
+            return normalizeInbox({ unreadCount: 0, interactions: [] });
+          }),
+        ]);
+
+        const currentMap = normalizeNotifications(stateRef.current.notifications);
+        const currentNotification = normalizeNotificationEntry(currentMap[userId]);
+        const mergedNotification = mergeNotificationEntries(cloudNotification, currentNotification);
+
+        const nextUserNotification = {
+          ...mergedNotification,
+          unreadCount: inbox.unreadCount,
+          interactions: inbox.interactions,
+        };
+
+        snapshot.notifications = {
+          ...currentMap,
+          [userId]: nextUserNotification,
+        };
+
+        baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
+        await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(snapshot.notifications));
+        await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
+        return { ok: true };
       }
 
       if (action.type === 'MARK_INTERACTION_READ') {
