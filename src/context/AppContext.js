@@ -13,6 +13,7 @@ const CLOUD_POSTS_LIMIT = 80;
 const CLOUD_PLANS_LIMIT = 80;
 const CLOUD_KNOWLEDGE_LIMIT = 80;
 const CLOUD_POLL_INTERVAL_MS = 12000;
+const AUTH_REQUEST_TIMEOUT_MS = 15000;
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_UPLOAD_BYTES = 20 * 1024 * 1024;
 const LOCAL_MUTATION_MUTE_MS = 2500;
@@ -1235,6 +1236,9 @@ function applyCloudPatch(state, patch, currentUserId) {
 function getFriendlyErrorMessage(error, fallback) {
   const message = error?.message || '';
   if (/invalid login credentials/i.test(message)) return '账号或密码错误';
+  if (/auth request timeout|timeout|network request failed|failed to fetch|fetch failed/i.test(message)) {
+    return '网络连接异常，登录请求超时，请检查网络后重试';
+  }
   if (/user already registered/i.test(message)) return '该账号已被注册';
   if (/email rate limit exceeded/i.test(message)) return '请求过于频繁，请稍后再试';
   if (/invalid email|unable to validate email address/i.test(message)) return '账号格式不正确，请使用 3-32 位字母、数字或 . _ -';
@@ -1243,6 +1247,21 @@ function getFriendlyErrorMessage(error, fallback) {
   if (/文件过大|too large|payload too large|request entity too large/i.test(message)) return '文件过大，请压缩后再上传';
   if (/email not confirmed/i.test(message)) return '当前 Supabase 开启了邮箱确认，请先关闭 Confirm email';
   return fallback;
+}
+
+async function withTimeout(taskPromise, timeoutMs, timeoutMessage) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([taskPromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function AppProvider({ children }) {
@@ -1595,10 +1614,14 @@ export function AppProvider({ children }) {
           return { ok: false, error: '请输入密码' };
         }
 
-        const signInRes = await supabase.auth.signInWithPassword({
-          email: buildAuthEmail(account),
-          password,
-        });
+        const signInRes = await withTimeout(
+          supabase.auth.signInWithPassword({
+            email: buildAuthEmail(account),
+            password,
+          }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          'Auth request timeout'
+        );
 
         if (signInRes.error) return { ok: false, error: getFriendlyErrorMessage(signInRes.error, '登录失败') };
 
