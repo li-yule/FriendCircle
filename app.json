@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "FriendCircle",
-    "slug": "friendcircle",
+    "slug": "friendcircle-57va9kfqidbzpvz7jiu6",
     "scheme": "friendcircle",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -46,9 +46,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "5ec5f9d3-ac80-47e3-a13d-819f24cd6aaf"
+        "projectId": "00f8786c-7263-4c2d-8fc5-9a9a62cecaef"
       }
     },
-    "owner": "wspring"
+    "owner": "liyule"
   }
 }
