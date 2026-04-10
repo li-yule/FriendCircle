@@ -1019,13 +1019,11 @@ async function fetchMessageInbox(userId) {
 
   const [countRes, listRes] = await Promise.all([
     supabase
-      .schema('public')
       .from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('is_read', 0),
     supabase
-      .schema('public')
       .from('messages')
       .select('id,user_id,actor_id,source_type,source_id,source_preview,content,created_at,is_read')
       .eq('user_id', userId)
@@ -1053,7 +1051,6 @@ async function markAllMessagesRead(userId) {
   if (!userId) return normalizeInbox({ unreadCount: 0, interactions: [] });
 
   const { data, error } = await supabase
-    .schema('public')
     .from('messages')
     .update({ is_read: 1 })
     .eq('user_id', userId)
@@ -1071,7 +1068,6 @@ async function markAllMessagesRead(userId) {
     const [{ data: authData }, { count: visibleUnreadCount, error: countError }] = await Promise.all([
       supabase.auth.getUser(),
       supabase
-        .schema('public')
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
@@ -1108,7 +1104,6 @@ async function markOneMessageRead(userId, messageId) {
   if (!userId || !messageId) return fetchMessageInbox(userId);
 
   const { error } = await supabase
-    .schema('public')
     .from('messages')
     .update({ is_read: 1 })
     .eq('id', messageId)
@@ -2158,7 +2153,7 @@ export function AppProvider({ children }) {
         }
 
         if (action.type === 'ADD_COMMENT' && optimisticComment && post.userId !== currentUser.id) {
-          const { error: messageError } = await supabase.schema('public').from('messages').insert({
+          const { error: messageError } = await supabase.from('messages').insert({
             user_id: post.userId,
             actor_id: currentUser.id,
             source_type: 'post',
@@ -2278,7 +2273,7 @@ export function AppProvider({ children }) {
         }
 
         if (item.userId !== currentUser.id) {
-          const { error: messageError } = await supabase.schema('public').from('messages').insert({
+          const { error: messageError } = await supabase.from('messages').insert({
             user_id: item.userId,
             actor_id: currentUser.id,
             source_type: 'knowledge',
