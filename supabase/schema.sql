@@ -59,14 +59,20 @@ create table if not exists public.messages (
   actor_id uuid not null references public.profiles (id) on delete cascade,
   source_type text not null,
   source_id text not null,
+  source_comment_id text,
   source_preview text not null default '',
   content text not null default '',
   is_read int not null default 0,
   created_at timestamptz not null default timezone('utc', now())
 );
 
+alter table public.messages add column if not exists source_comment_id text;
+
 create index if not exists idx_messages_user_unread on public.messages (user_id, is_read);
 create index if not exists idx_messages_user_created_at on public.messages (user_id, created_at desc);
+create unique index if not exists idx_messages_comment_unique
+on public.messages (user_id, actor_id, source_type, source_id, source_comment_id)
+where source_comment_id is not null;
 
 do $$
 declare
@@ -86,6 +92,161 @@ begin
   end loop;
 end
 $$;
+
+create or replace function public.enqueue_post_comment_messages()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_comment jsonb;
+  old_comment jsonb;
+  comment_id text;
+  actor_id_text text;
+  actor_uuid uuid;
+begin
+  if tg_op <> 'UPDATE' then
+    return new;
+  end if;
+
+  if coalesce(new.comments, '[]'::jsonb) = coalesce(old.comments, '[]'::jsonb) then
+    return new;
+  end if;
+
+  for new_comment in select value from jsonb_array_elements(coalesce(new.comments, '[]'::jsonb)) loop
+    comment_id := coalesce(new_comment ->> 'id', '');
+    if comment_id = '' then
+      continue;
+    end if;
+
+    if exists (
+      select 1
+      from jsonb_array_elements(coalesce(old.comments, '[]'::jsonb)) as prev(value)
+      where coalesce(prev.value ->> 'id', '') = comment_id
+    ) then
+      continue;
+    end if;
+
+    actor_id_text := coalesce(new_comment ->> 'userId', new_comment ->> 'user_id', '');
+    if actor_id_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      continue;
+    end if;
+    actor_uuid := actor_id_text::uuid;
+
+    if actor_uuid = new.user_id then
+      continue;
+    end if;
+
+    insert into public.messages (
+      user_id,
+      actor_id,
+      source_type,
+      source_id,
+      source_comment_id,
+      source_preview,
+      content,
+      is_read
+    )
+    values (
+      new.user_id,
+      actor_uuid,
+      'post',
+      new.id,
+      comment_id,
+      left(coalesce(new.text, ''), 120),
+      coalesce(new_comment ->> 'text', ''),
+      0
+    )
+    on conflict (user_id, actor_id, source_type, source_id, source_comment_id) do nothing;
+  end loop;
+
+  return new;
+end
+$$;
+
+drop trigger if exists trg_enqueue_post_comment_messages on public.posts;
+create trigger trg_enqueue_post_comment_messages
+after update of comments on public.posts
+for each row
+execute function public.enqueue_post_comment_messages();
+
+create or replace function public.enqueue_knowledge_comment_messages()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_comment jsonb;
+  comment_id text;
+  actor_id_text text;
+  actor_uuid uuid;
+begin
+  if tg_op <> 'UPDATE' then
+    return new;
+  end if;
+
+  if coalesce(new.comments, '[]'::jsonb) = coalesce(old.comments, '[]'::jsonb) then
+    return new;
+  end if;
+
+  for new_comment in select value from jsonb_array_elements(coalesce(new.comments, '[]'::jsonb)) loop
+    comment_id := coalesce(new_comment ->> 'id', '');
+    if comment_id = '' then
+      continue;
+    end if;
+
+    if exists (
+      select 1
+      from jsonb_array_elements(coalesce(old.comments, '[]'::jsonb)) as prev(value)
+      where coalesce(prev.value ->> 'id', '') = comment_id
+    ) then
+      continue;
+    end if;
+
+    actor_id_text := coalesce(new_comment ->> 'userId', new_comment ->> 'user_id', '');
+    if actor_id_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      continue;
+    end if;
+    actor_uuid := actor_id_text::uuid;
+
+    if actor_uuid = new.user_id then
+      continue;
+    end if;
+
+    insert into public.messages (
+      user_id,
+      actor_id,
+      source_type,
+      source_id,
+      source_comment_id,
+      source_preview,
+      content,
+      is_read
+    )
+    values (
+      new.user_id,
+      actor_uuid,
+      'knowledge',
+      new.id,
+      comment_id,
+      left(coalesce(new.question, ''), 120),
+      coalesce(new_comment ->> 'text', ''),
+      0
+    )
+    on conflict (user_id, actor_id, source_type, source_id, source_comment_id) do nothing;
+  end loop;
+
+  return new;
+end
+$$;
+
+drop trigger if exists trg_enqueue_knowledge_comment_messages on public.knowledge;
+create trigger trg_enqueue_knowledge_comment_messages
+after update of comments on public.knowledge
+for each row
+execute function public.enqueue_knowledge_comment_messages();
 
 create table if not exists public.notification_reads (
   user_id uuid primary key references public.profiles (id) on delete cascade,

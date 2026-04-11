@@ -1142,6 +1142,51 @@ async function saveCloudNotificationState(userId, entry) {
   if (error) throw error;
 }
 
+async function upsertInteractionMessage({
+  userId,
+  actorId,
+  sourceType,
+  sourceId,
+  sourcePreview,
+  content,
+  sourceCommentId,
+}) {
+  if (!userId || !actorId || userId === actorId) return;
+
+  const basePayload = {
+    user_id: userId,
+    actor_id: actorId,
+    source_type: String(sourceType || 'post'),
+    source_id: String(sourceId || ''),
+    source_preview: String(sourcePreview || '').slice(0, 120),
+    content: String(content || ''),
+    is_read: 0,
+  };
+
+  const dedupePayload = {
+    ...basePayload,
+    source_comment_id: sourceCommentId ? String(sourceCommentId) : null,
+  };
+
+  const dedupeRes = await supabase
+    .from('messages')
+    .upsert(dedupePayload, {
+      onConflict: 'user_id,actor_id,source_type,source_id,source_comment_id',
+      ignoreDuplicates: true,
+    });
+
+  if (!dedupeRes.error) return;
+
+  const msg = String(dedupeRes.error?.message || '');
+  if (/column .*source_comment_id.* does not exist/i.test(msg) || /no unique|constraint/i.test(msg)) {
+    const fallbackRes = await supabase.from('messages').insert(basePayload);
+    if (fallbackRes.error) throw fallbackRes.error;
+    return;
+  }
+
+  throw dedupeRes.error;
+}
+
 async function fetchCloudPatch(tables) {
   const wanted = new Set(ensureArray(tables));
   const tasks = [];
@@ -2203,17 +2248,18 @@ export function AppProvider({ children }) {
         }
 
         if (action.type === 'ADD_COMMENT' && optimisticComment && post.userId !== currentUser.id) {
-          const { error: messageError } = await supabase.from('messages').insert({
-            user_id: post.userId,
-            actor_id: currentUser.id,
-            source_type: 'post',
-            source_id: postId,
-            source_preview: String(post.text || '').slice(0, 120),
-            content: String(optimisticComment.text || ''),
-            is_read: 0,
-          });
-          if (messageError) {
-            console.warn('[ADD_COMMENT] 写入 messages 失败:', messageError.message);
+          try {
+            await upsertInteractionMessage({
+              userId: post.userId,
+              actorId: currentUser.id,
+              sourceType: 'post',
+              sourceId: postId,
+              sourcePreview: post.text,
+              content: optimisticComment.text,
+              sourceCommentId: optimisticComment.id,
+            });
+          } catch (messageError) {
+            console.warn('[ADD_COMMENT] 写入 messages 失败:', messageError?.message || messageError);
           }
         }
 
@@ -2323,17 +2369,18 @@ export function AppProvider({ children }) {
         }
 
         if (item.userId !== currentUser.id) {
-          const { error: messageError } = await supabase.from('messages').insert({
-            user_id: item.userId,
-            actor_id: currentUser.id,
-            source_type: 'knowledge',
-            source_id: item.id,
-            source_preview: String(item.question || '').slice(0, 120),
-            content: String(uploadedComment.text || ''),
-            is_read: 0,
-          });
-          if (messageError) {
-            console.warn('[ADD_KNOWLEDGE_COMMENT] 写入 messages 失败:', messageError.message);
+          try {
+            await upsertInteractionMessage({
+              userId: item.userId,
+              actorId: currentUser.id,
+              sourceType: 'knowledge',
+              sourceId: item.id,
+              sourcePreview: item.question,
+              content: uploadedComment.text,
+              sourceCommentId: uploadedComment.id,
+            });
+          } catch (messageError) {
+            console.warn('[ADD_KNOWLEDGE_COMMENT] 写入 messages 失败:', messageError?.message || messageError);
           }
         }
 
