@@ -17,6 +17,7 @@ export default function PlanScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('mine'); // 'mine' | 'friends'
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'study' | 'life'
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const myFriendIds = new Set(safeCurrentUser.friends || []);
@@ -53,7 +54,9 @@ export default function PlanScreen({ navigation }) {
     );
   }
 
-  const data = (activeTab === 'mine' ? myPlans : friendPlans).filter(item => toDateKey(item.date) === selectedDate);
+  const data = (activeTab === 'mine' ? myPlans : friendPlans)
+    .filter(item => toDateKey(item.date) === selectedDate)
+    .filter(item => categoryFilter === 'all' ? true : (item.category || 'study') === categoryFilter);
 
   const selectedSummary = useMemo(() => {
     const mineToday = myPlans.filter(item => toDateKey(item.date) === selectedDate);
@@ -103,6 +106,20 @@ export default function PlanScreen({ navigation }) {
     ]);
   };
 
+  const handleEditPlan = (plan) => {
+    if (!plan || plan.userId !== currentUserId) return;
+    navigation.navigate('NewPlan', { plan });
+  };
+
+  const renderCategoryTag = (category) => {
+    const isLife = category === 'life';
+    return (
+      <View style={[styles.categoryTag, isLife ? styles.categoryTagLife : styles.categoryTagStudy]}>
+        <Text style={styles.categoryTagText}>{isLife ? '生活' : '学习'}</Text>
+      </View>
+    );
+  };
+
   const renderMinePlan = (plan) => {
     const taskList = plan.tasks || [];
     const taskDone = taskList.length > 0 && taskList.every(task => task.done);
@@ -122,11 +139,17 @@ export default function PlanScreen({ navigation }) {
           <View style={styles.minePlanMain}>
             <Text style={styles.minePlanDate}>{formatDate(plan.date)}</Text>
             {!!plan.title && <Text style={[styles.friendPlanTitle, done && styles.donePlanTitle]}>{plan.title}</Text>}
+            {renderCategoryTag(plan.category || 'study')}
           </View>
 
-          <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
-            <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
-          </TouchableOpacity>
+          <View style={styles.mineActions}>
+            <TouchableOpacity onPress={() => handleEditPlan(plan)}>
+              <Ionicons name="create-outline" size={18} color="#8A969E" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDeletePlan(plan)}>
+              <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -146,6 +169,7 @@ export default function PlanScreen({ navigation }) {
         </View>
 
         {!!item.title && <Text style={styles.friendPlanTitle}>{item.title}</Text>}
+        {renderCategoryTag(item.category || 'study')}
       </View>
     );
   };
@@ -189,6 +213,27 @@ export default function PlanScreen({ navigation }) {
         </TouchableOpacity>
         <TouchableOpacity onPress={() => moveSelectedDate(1)}>
           <Ionicons name="chevron-forward" size={22} color="#999" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.categoryFilterRow}>
+        <TouchableOpacity
+          style={[styles.categoryFilterChip, categoryFilter === 'all' && styles.categoryFilterChipActive]}
+          onPress={() => setCategoryFilter('all')}
+        >
+          <Text style={[styles.categoryFilterText, categoryFilter === 'all' && styles.categoryFilterTextActive]}>全部</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.categoryFilterChip, categoryFilter === 'study' && styles.categoryFilterChipActive]}
+          onPress={() => setCategoryFilter('study')}
+        >
+          <Text style={[styles.categoryFilterText, categoryFilter === 'study' && styles.categoryFilterTextActive]}>学习</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.categoryFilterChip, categoryFilter === 'life' && styles.categoryFilterChipActive]}
+          onPress={() => setCategoryFilter('life')}
+        >
+          <Text style={[styles.categoryFilterText, categoryFilter === 'life' && styles.categoryFilterTextActive]}>生活</Text>
         </TouchableOpacity>
       </View>
 
@@ -274,6 +319,27 @@ const styles = StyleSheet.create({
   },
   dateCenterBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dateSwitchText: { fontSize: 18, fontWeight: '700', color: '#2F2A24' },
+  categoryFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    backgroundColor: '#FFFDF8',
+  },
+  categoryFilterChip: {
+    borderWidth: 1,
+    borderColor: '#E8E1D8',
+    backgroundColor: '#F2EEE6',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  categoryFilterChipActive: {
+    backgroundColor: '#F6EEDC',
+    borderColor: '#E9DDBF',
+  },
+  categoryFilterText: { fontSize: 12, color: '#7D746B', fontWeight: '600' },
+  categoryFilterTextActive: { color: '#8A7242' },
   ringWrap: {
     alignItems: 'center',
     paddingTop: 8,
@@ -318,6 +384,7 @@ const styles = StyleSheet.create({
   friendPlanHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   minePlanRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   minePlanMain: { flex: 1, gap: 4 },
+  mineActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   taskCircle: {
     width: 20,
     height: 20,
@@ -337,6 +404,23 @@ const styles = StyleSheet.create({
   friendPlanAuthor: { fontSize: 15, fontWeight: '700', color: '#3F3932' },
   friendPlanDate: { marginTop: 2, fontSize: 12, color: '#8A969E' },
   friendPlanTitle: { fontSize: 16, fontWeight: '700', color: '#3F3932' },
+  categoryTag: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderWidth: 1,
+  },
+  categoryTagStudy: {
+    backgroundColor: '#F6EEDC',
+    borderColor: '#E9DDBF',
+  },
+  categoryTagLife: {
+    backgroundColor: '#EAF7F5',
+    borderColor: '#D5ECE8',
+  },
+  categoryTagText: { fontSize: 11, color: '#6F655D', fontWeight: '600' },
   donePlanTitle: { textDecorationLine: 'line-through', color: '#9C948A' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 100 },
   emptyText: { color: '#bbb', fontSize: 14, marginTop: 12, textAlign: 'center' },

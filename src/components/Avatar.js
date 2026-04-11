@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { INITIAL_USERS } from '../data/initialData';
+import { ReliableImage } from './ReliableImage';
 
 // 头像组件：显示彩色首字母头像
 export function Avatar({ user, size = 40, onPress }) {
@@ -12,8 +13,8 @@ export function Avatar({ user, size = 40, onPress }) {
 
   const inner = (
     hasAvatarImage ? (
-      <Image
-        source={{ uri: u.avatar }}
+      <ReliableImage
+        uri={u.avatar}
         style={[styles.avatarImage, { width: size, height: size, borderRadius: size / 2 }]}
       />
     ) : (

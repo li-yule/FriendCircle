@@ -9,12 +9,15 @@ import { useApp } from '../context/AppContext';
 import { formatDateKey, generateId, toDateKey } from '../utils/helpers';
 import DatePickerSheet from '../components/DatePickerSheet';
 
-export default function NewPlanScreen({ navigation }) {
+export default function NewPlanScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
   const { currentUser } = state;
+  const editingPlan = route?.params?.plan || null;
+  const isEditMode = Boolean(editingPlan?.id);
 
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getTodayStr());
+  const [category, setCategory] = useState('study');
   const [enableReminder, setEnableReminder] = useState(false);
   const [reminderHour, setReminderHour] = useState('21');
   const [reminderMinute, setReminderMinute] = useState('00');
@@ -28,6 +31,22 @@ export default function NewPlanScreen({ navigation }) {
   const ITEM_HEIGHT = 44;
   const hourScrollRef = useRef(null);
   const minuteScrollRef = useRef(null);
+
+  useEffect(() => {
+    if (!isEditMode) return;
+
+    const originalDate = editingPlan?.date ? toDateKey(editingPlan.date) : getTodayStr();
+    const rawCategory = String(editingPlan?.category || '').trim().toLowerCase();
+    const reminderRaw = String(editingPlan?.reminderAt || '').trim();
+    const reminderMatch = reminderRaw.match(/(\d{2}):(\d{2})$/);
+
+    setTitle(String(editingPlan?.title || ''));
+    setDate(originalDate);
+    setCategory(rawCategory === 'life' ? 'life' : 'study');
+    setEnableReminder(Boolean(reminderMatch));
+    setReminderHour(reminderMatch?.[1] || '21');
+    setReminderMinute(reminderMatch?.[2] || '00');
+  }, [editingPlan?.id]);
 
   useEffect(() => {
     let active = true;
@@ -122,7 +141,7 @@ export default function NewPlanScreen({ navigation }) {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    if (pickedDate < today) {
+    if (!isEditMode && pickedDate < today) {
       Alert.alert('提示', '规划只能创建今天或未来日期');
       return;
     }
@@ -136,22 +155,24 @@ export default function NewPlanScreen({ navigation }) {
     let result;
     try {
       result = await dispatch({
-        type: 'ADD_PLAN',
+        type: isEditMode ? 'UPDATE_PLAN' : 'ADD_PLAN',
         payload: {
-          id: generateId(),
+          id: isEditMode ? editingPlan.id : generateId(),
           userId: currentUser.id,
           title: trimmedTitle,
           date: pickedDate.toISOString(),
-          tasks: [],
+          category,
+          tasks: isEditMode ? (editingPlan.tasks || []) : [],
+          done: isEditMode ? Boolean(editingPlan.done) : false,
           reminderAt: enableReminder ? `${date} ${reminderTime}` : '',
-          createdAt: new Date().toISOString(),
+          createdAt: isEditMode ? (editingPlan.createdAt || new Date().toISOString()) : new Date().toISOString(),
         },
       });
     } finally {
       setIsSubmitting(false);
     }
     if (!result?.ok) {
-      Alert.alert('发布失败', result?.error || '请稍后重试');
+      Alert.alert(isEditMode ? '保存失败' : '发布失败', result?.error || '请稍后重试');
       return;
     }
     if (enableReminder) {
@@ -209,9 +230,9 @@ export default function NewPlanScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.cancel}>取消</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>新建规划</Text>
+        <Text style={styles.title}>{isEditMode ? '编辑规划' : '新建规划'}</Text>
         <TouchableOpacity style={[styles.sendBtn, isSubmitting && styles.sendBtnDisabled]} onPress={handleSubmit} disabled={isSubmitting}>
-          {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.sendText}>发布</Text>}
+          {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.sendText}>{isEditMode ? '保存' : '发布'}</Text>}
         </TouchableOpacity>
       </View>
 
@@ -221,8 +242,8 @@ export default function NewPlanScreen({ navigation }) {
             <Ionicons name="sparkles-outline" size={18} color="#FF6B6B" />
           </View>
           <View style={styles.heroTextWrap}>
-            <Text style={styles.heroTitle}>创建一个轻量规划</Text>
-            <Text style={styles.heroDesc}>写下标题，选择日期，发布后会自动生成同名任务。</Text>
+            <Text style={styles.heroTitle}>{isEditMode ? '修改你的规划' : '创建一个轻量规划'}</Text>
+            <Text style={styles.heroDesc}>支持学习/生活分类，发布后也可以继续修改。</Text>
           </View>
         </View>
 
@@ -236,6 +257,26 @@ export default function NewPlanScreen({ navigation }) {
             maxLength={40}
           />
           <Text style={styles.counterText}>{title.trim().length}/40</Text>
+        </View>
+
+        <View style={styles.fieldCard}>
+          <Text style={styles.label}>规划分类</Text>
+          <View style={styles.categoryRow}>
+            <TouchableOpacity
+              style={[styles.categoryChip, category === 'study' && styles.categoryChipActive]}
+              onPress={() => setCategory('study')}
+            >
+              <Ionicons name="school-outline" size={15} color={category === 'study' ? '#8A7242' : '#7D746B'} />
+              <Text style={[styles.categoryText, category === 'study' && styles.categoryTextActive]}>学习</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.categoryChip, category === 'life' && styles.categoryChipActive]}
+              onPress={() => setCategory('life')}
+            >
+              <Ionicons name="leaf-outline" size={15} color={category === 'life' ? '#8A7242' : '#7D746B'} />
+              <Text style={[styles.categoryText, category === 'life' && styles.categoryTextActive]}>生活</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.fieldCard}>
@@ -441,6 +482,24 @@ const styles = StyleSheet.create({
   },
   quickDateText: { color: '#6F655D', fontSize: 12, fontWeight: '600' },
   reminderHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  categoryRow: { flexDirection: 'row', gap: 10 },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#E8E1D8',
+    borderRadius: 14,
+    backgroundColor: '#F2EEE6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  categoryChipActive: {
+    backgroundColor: '#F6EEDC',
+    borderColor: '#E9DDBF',
+  },
+  categoryText: { fontSize: 13, color: '#7D746B', fontWeight: '600' },
+  categoryTextActive: { color: '#8A7242' },
   reminderToggle: {
     paddingHorizontal: 10,
     paddingVertical: 5,

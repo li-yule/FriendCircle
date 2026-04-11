@@ -175,11 +175,14 @@ export default function NewPostScreen({ navigation }) {
       Alert.alert('发布失败', result?.error || '请稍后重试');
       return;
     }
+    dispatch({ type: 'REFRESH_CLOUD_STATE', payload: { userId: currentUser.id } }).catch(() => {});
     if (Platform.OS === 'android') {
       ToastAndroid.show(
         result?.async ? '发布成功，媒体后台上传中' : '发布成功',
         ToastAndroid.SHORT
       );
+    } else {
+      Alert.alert('发布成功', result?.async ? '媒体正在后台上传中' : '动态已发布');
     }
     navigation.goBack();
   };

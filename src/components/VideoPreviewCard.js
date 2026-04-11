@@ -5,9 +5,10 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 
 export default function VideoPreviewCard({ uri, label = '视频动态', style, showFloatingButton = true }) {
   const [playing, setPlaying] = useState(false);
-  const [activated, setActivated] = useState(true);
+  const [activated, setActivated] = useState(false);
+  const [pendingAutoPlay, setPendingAutoPlay] = useState(false);
 
-  const player = useVideoPlayer(uri, playerInstance => {
+  const player = useVideoPlayer(activated ? uri : null, playerInstance => {
     playerInstance.loop = false;
     playerInstance.muted = true;
     playerInstance.pause();
@@ -19,7 +20,11 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style, s
         player.pause();
         setPlaying(false);
       } else {
-        setActivated(true);
+        if (!activated) {
+          setActivated(true);
+          setPendingAutoPlay(true);
+          return;
+        }
         player.muted = false;
         player.play();
         setPlaying(true);
@@ -28,6 +33,19 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style, s
       setPlaying(false);
     }
   };
+
+  useEffect(() => {
+    if (!activated || !pendingAutoPlay) return;
+    try {
+      player.muted = false;
+      player.play();
+      setPlaying(true);
+    } catch {
+      setPlaying(false);
+    } finally {
+      setPendingAutoPlay(false);
+    }
+  }, [activated, pendingAutoPlay, player]);
 
   useEffect(() => {
     return () => {

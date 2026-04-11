@@ -325,6 +325,11 @@ export default function FeedScreen({ navigation }) {
         data={visiblePosts}
         keyExtractor={item => item.id}
         renderItem={renderPost}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        removeClippedSubviews
+        updateCellBatchingPeriod={80}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#C49A4B" />}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"

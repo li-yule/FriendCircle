@@ -23,6 +23,8 @@ const CURRENT_USER_CACHE_KEY = 'friendcircle_current_user_cache_v1';
 const NOTIFICATIONS_CACHE_KEY = 'friendcircle_notifications_cache_v1';
 const STATE_CACHE_KEY = 'friendcircle_state_cache_v1';
 const PLAN_DONE_MARKER_ID = '__plan_done__';
+const PLAN_CATEGORY_MARKER_ID = '__plan_category__';
+const LOCAL_NEW_ITEM_KEEP_MS = 120000;
 
 function getNotificationUserCacheKey(userId) {
   return `friendcircle_notifications_cache_${userId}`;
@@ -247,17 +249,20 @@ function normalizePost(item) {
 function normalizePlan(item) {
   const rawTasks = ensureArray(item?.tasks);
   const marker = rawTasks.find(task => task?.id === PLAN_DONE_MARKER_ID);
+  const categoryMarker = rawTasks.find(task => task?.id === PLAN_CATEGORY_MARKER_ID);
+  const categoryValue = String(item?.category || categoryMarker?.text || '').trim().toLowerCase();
   return {
     id: item?.id || generateId(),
     userId: item?.userId || item?.user_id || '',
     title: item?.title || '',
     date: item?.date || new Date().toISOString(),
-    tasks: rawTasks.filter(task => task?.id !== PLAN_DONE_MARKER_ID).map(task => ({
+    tasks: rawTasks.filter(task => task?.id !== PLAN_DONE_MARKER_ID && task?.id !== PLAN_CATEGORY_MARKER_ID).map(task => ({
       id: task?.id || generateId(),
       text: task?.text || '',
       done: Boolean(task?.done),
       reminderTime: task?.reminderTime || '',
     })),
+    category: categoryValue === 'life' ? 'life' : 'study',
     reminderAt: item?.reminderAt || item?.reminder_at || '',
     done: typeof item?.done === 'boolean' ? item.done : Boolean(marker?.done),
     createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
@@ -339,9 +344,11 @@ function serializePost(post) {
 
 function serializePlan(plan) {
   const normalized = normalizePlan(plan);
-  const serializedTasks = normalized.done
-    ? [{ id: PLAN_DONE_MARKER_ID, text: '', done: true, reminderTime: '' }, ...normalized.tasks]
-    : normalized.tasks;
+  const serializedTasks = [
+    { id: PLAN_CATEGORY_MARKER_ID, text: normalized.category || 'study', done: false, reminderTime: '' },
+    ...(normalized.done ? [{ id: PLAN_DONE_MARKER_ID, text: '', done: true, reminderTime: '' }] : []),
+    ...normalized.tasks,
+  ];
   return {
     id: normalized.id,
     user_id: normalized.userId,
@@ -1215,11 +1222,43 @@ function applyCloudPatch(state, patch, currentUserId) {
   }
 
   if (patch?.posts) {
-    nextState.posts = ensureArray(patch.posts).map(normalizePost);
+    const cloudPosts = ensureArray(patch.posts).map(normalizePost);
+    const localPosts = ensureArray(state.posts).map(normalizePost);
+    const cloudIdSet = new Set(cloudPosts.map(item => item.id));
+    const retainedLocal = localPosts.filter(item => {
+      if (!item?.id || cloudIdSet.has(item.id)) return false;
+      if (item.uploadStatus === 'uploading' || item.uploadStatus === 'failed') return true;
+      const createdAtMs = new Date(item.createdAt).getTime();
+      if (!Number.isFinite(createdAtMs)) return false;
+      return Date.now() - createdAtMs <= LOCAL_NEW_ITEM_KEEP_MS;
+    });
+
+    nextState.posts = [...retainedLocal, ...cloudPosts]
+      .reduce((acc, item) => {
+        if (acc.some(existing => existing.id === item.id)) return acc;
+        acc.push(item);
+        return acc;
+      }, [])
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }
 
   if (patch?.plans) {
-    nextState.plans = ensureArray(patch.plans).map(normalizePlan);
+    const cloudPlans = ensureArray(patch.plans).map(normalizePlan);
+    const localPlans = ensureArray(state.plans).map(normalizePlan);
+    const cloudPlanIds = new Set(cloudPlans.map(item => item.id));
+    const retainedLocalPlans = localPlans.filter(item => {
+      if (!item?.id || cloudPlanIds.has(item.id)) return false;
+      const createdAtMs = new Date(item.createdAt).getTime();
+      return Number.isFinite(createdAtMs) && Date.now() - createdAtMs <= LOCAL_NEW_ITEM_KEEP_MS;
+    });
+
+    nextState.plans = [...retainedLocalPlans, ...cloudPlans]
+      .reduce((acc, item) => {
+        if (acc.some(existing => existing.id === item.id)) return acc;
+        acc.push(item);
+        return acc;
+      }, [])
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
   }
 
   if (patch?.knowledge) {
@@ -1764,6 +1803,17 @@ export function AppProvider({ children }) {
             .catch(() => {});
 
           await AsyncStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ account, password }));
+
+          try {
+            const bootstrapSnapshot = await withTimeout(
+              fetchCloudState(authUser.id),
+              3500,
+              'bootstrap state timeout'
+            );
+            baseDispatch({ type: 'LOAD_STATE', payload: buildCloudState(bootstrapSnapshot, authUser.id) });
+          } catch {
+            // 首次同步失败时保持快速登录路径，后续由实时订阅/轮询继续补齐数据
+          }
         }
 
         return { ok: true };
