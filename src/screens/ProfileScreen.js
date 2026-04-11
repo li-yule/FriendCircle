@@ -23,6 +23,7 @@ export default function ProfileScreen({ navigation }) {
   const [bioInput, setBioInput] = useState(safeCurrentUser.bio || '');
   const [avatarInput, setAvatarInput] = useState(safeCurrentUser.avatar || null);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const inbox = state.notifications?.[currentUserId] || { unreadCount: 0, interactions: [] };
 
   const myPosts = currentUserId ? posts.filter(p => p.userId === currentUserId) : [];
@@ -182,6 +183,44 @@ export default function ProfileScreen({ navigation }) {
     if (!result?.ok) {
       Alert.alert('退出失败', result?.error || '请稍后重试');
     }
+  };
+
+  const handleDeleteAccount = () => {
+    if (deletingAccount) return;
+    Alert.alert(
+      '注销账号',
+      '注销后将删除你的资料、动态、规划、知识和互动消息，且无法恢复。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '继续',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              '最终确认',
+              `确认永久注销账号「${safeCurrentUser.name || safeCurrentUser.account || '当前账号'}」吗？`,
+              [
+                { text: '返回', style: 'cancel' },
+                {
+                  text: '确认注销',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setDeletingAccount(true);
+                    const result = await dispatch({ type: 'DELETE_ACCOUNT' });
+                    setDeletingAccount(false);
+                    if (!result?.ok) {
+                      Alert.alert('注销失败', result?.error || '请稍后重试');
+                      return;
+                    }
+                    Alert.alert('已注销', '账号已注销完成');
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
   };
 
   const renderPost = (item) => {
@@ -356,6 +395,12 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.logoutBtnText}>退出登录</Text>
             </TouchableOpacity>
           </View>
+        </View>
+        <View style={styles.dangerRow}>
+          <TouchableOpacity style={[styles.deleteAccountBtn, deletingAccount && styles.accountBtnDisabled]} onPress={handleDeleteAccount} disabled={deletingAccount}>
+            <Ionicons name="warning-outline" size={14} color="#C83A3A" />
+            <Text style={styles.deleteAccountBtnText}>{deletingAccount ? '注销中...' : '注销账号'}</Text>
+          </TouchableOpacity>
         </View>
         <View style={styles.statsRow}>
           <View style={styles.stat}>
@@ -565,6 +610,17 @@ const styles = StyleSheet.create({
   accountBtnText: { color: '#8A7242', fontWeight: '600', fontSize: 12 },
   logoutBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#FFEAEA' },
   logoutBtnText: { color: '#FF6B6B', fontWeight: '600', fontSize: 12 },
+  dangerRow: { marginBottom: 8, alignItems: 'flex-start' },
+  deleteAccountBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#FFE3E3',
+  },
+  deleteAccountBtnText: { color: '#C83A3A', fontWeight: '700', fontSize: 12 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderTopColor: '#F5F5F5', paddingTop: 16 },
   stat: { alignItems: 'center' },
   statNum: { fontSize: 22, fontWeight: 'bold', color: '#333' },

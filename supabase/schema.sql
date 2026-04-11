@@ -285,6 +285,38 @@ to authenticated
 using (true)
 with check (true);
 
+drop policy if exists "profiles_delete_self" on public.profiles;
+create policy "profiles_delete_self"
+on public.profiles for delete
+to authenticated
+using (auth.uid() = id);
+
+create or replace function public.delete_my_account()
+returns boolean
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  update public.profiles
+  set friends = array_remove(friends, uid::text),
+      updated_at = timezone('utc', now())
+  where uid::text = any(friends);
+
+  delete from auth.users where id = uid;
+  return true;
+end
+$$;
+
+revoke all on function public.delete_my_account() from public;
+grant execute on function public.delete_my_account() to authenticated;
+
 drop policy if exists "posts_select_authenticated" on public.posts;
 create policy "posts_select_authenticated"
 on public.posts for select

@@ -1142,6 +1142,19 @@ async function saveCloudNotificationState(userId, entry) {
   if (error) throw error;
 }
 
+async function clearLocalSessionCache(userId) {
+  const keys = [
+    AUTH_CACHE_KEY,
+    CURRENT_USER_CACHE_KEY,
+    NOTIFICATIONS_CACHE_KEY,
+    STATE_CACHE_KEY,
+  ];
+  if (userId) {
+    keys.push(getNotificationUserCacheKey(userId));
+  }
+  await AsyncStorage.multiRemove(keys);
+}
+
 async function upsertInteractionMessage({
   userId,
   actorId,
@@ -1947,11 +1960,44 @@ export function AppProvider({ children }) {
       }
 
       if (action.type === 'LOGOUT') {
+        const userId = currentUser.id;
         const { error } = await supabase.auth.signOut();
         if (error) return { ok: false, error: '退出登录失败' };
-        await AsyncStorage.removeItem(AUTH_CACHE_KEY);
-        await AsyncStorage.removeItem(CURRENT_USER_CACHE_KEY);
+        await clearLocalSessionCache(userId);
         baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState(stateRef.current.notifications) });
+        return { ok: true };
+      }
+
+      if (action.type === 'DELETE_ACCOUNT') {
+        const userId = currentUser.id;
+        if (!userId) return { ok: false, error: '请先登录' };
+
+        let deleted = false;
+
+        const rpcRes = await supabase.rpc('delete_my_account');
+        if (!rpcRes.error) {
+          deleted = true;
+        } else {
+          const fallbackDelete = await supabase.from('profiles').delete().eq('id', userId);
+          if (!fallbackDelete.error) {
+            deleted = true;
+          } else {
+            return { ok: false, error: `注销失败：${rpcRes.error.message || fallbackDelete.error.message || '请检查数据库函数和RLS策略'}` };
+          }
+        }
+
+        const signOutRes = await supabase.auth.signOut();
+        if (signOutRes.error) {
+          console.warn('[DELETE_ACCOUNT] signOut failed:', signOutRes.error.message);
+        }
+
+        await clearLocalSessionCache(userId);
+        baseDispatch({ type: 'LOAD_STATE', payload: createEmptyLoadedState({}) });
+
+        if (!deleted) {
+          return { ok: false, error: '注销失败' };
+        }
+
         return { ok: true };
       }
 
