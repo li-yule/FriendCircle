@@ -26,6 +26,14 @@ export default function FeedScreen({ navigation }) {
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const prefetchCacheRef = useRef(new Set()); // 缓存已预加载的图片URI
 
+  if (!currentUser?.id) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
+        <Text style={{ color: '#6E655C' }}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
+
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const resolveReplyingName = (comment) => {
     const rawName = String(comment?.replyToUserName || '').trim();

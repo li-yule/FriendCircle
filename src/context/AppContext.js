@@ -177,6 +177,24 @@ function normalizeComment(comment) {
   };
 }
 
+function mergeCommentsById(cloudComments, localComments) {
+  const merged = new Map();
+
+  ensureArray(cloudComments).map(normalizeComment).forEach(comment => {
+    if (comment?.id) {
+      merged.set(comment.id, comment);
+    }
+  });
+
+  ensureArray(localComments).map(normalizeComment).forEach(comment => {
+    if (comment?.id && !merged.has(comment.id)) {
+      merged.set(comment.id, comment);
+    }
+  });
+
+  return Array.from(merged.values()).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
 function normalizeNotifications(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return value;
@@ -1282,6 +1300,7 @@ function applyCloudPatch(state, patch, currentUserId) {
   if (patch?.posts) {
     const cloudPosts = ensureArray(patch.posts).map(normalizePost);
     const localPosts = ensureArray(state.posts).map(normalizePost);
+    const localPostMap = new Map(localPosts.map(item => [item.id, item]));
     const cloudIdSet = new Set(cloudPosts.map(item => item.id));
     const retainedLocal = localPosts.filter(item => {
       if (!item?.id || cloudIdSet.has(item.id)) return false;
@@ -1291,7 +1310,14 @@ function applyCloudPatch(state, patch, currentUserId) {
       return Date.now() - createdAtMs <= LOCAL_NEW_ITEM_KEEP_MS;
     });
 
-    nextState.posts = [...retainedLocal, ...cloudPosts]
+    nextState.posts = [...retainedLocal, ...cloudPosts.map(item => {
+      const localItem = localPostMap.get(item.id);
+      if (!localItem) return item;
+      return {
+        ...item,
+        comments: mergeCommentsById(item.comments, localItem.comments),
+      };
+    })]
       .reduce((acc, item) => {
         if (acc.some(existing => existing.id === item.id)) return acc;
         acc.push(item);
@@ -1320,7 +1346,18 @@ function applyCloudPatch(state, patch, currentUserId) {
   }
 
   if (patch?.knowledge) {
-    nextState.knowledge = ensureArray(patch.knowledge).map(normalizeKnowledge);
+    const cloudKnowledge = ensureArray(patch.knowledge).map(normalizeKnowledge);
+    const localKnowledge = ensureArray(state.knowledge).map(normalizeKnowledge);
+    const localKnowledgeMap = new Map(localKnowledge.map(item => [item.id, item]));
+
+    nextState.knowledge = cloudKnowledge.map(item => {
+      const localItem = localKnowledgeMap.get(item.id);
+      if (!localItem) return item;
+      return {
+        ...item,
+        comments: mergeCommentsById(item.comments, localItem.comments),
+      };
+    });
   }
 
   return nextState;
@@ -1960,7 +1997,7 @@ export function AppProvider({ children }) {
       }
 
       if (action.type === 'LOGOUT') {
-        const userId = currentUser.id;
+        const userId = currentUser?.id || '';
         const { error } = await supabase.auth.signOut();
         if (error) return { ok: false, error: '退出登录失败' };
         await clearLocalSessionCache(userId);
@@ -1969,7 +2006,7 @@ export function AppProvider({ children }) {
       }
 
       if (action.type === 'DELETE_ACCOUNT') {
-        const userId = currentUser.id;
+        const userId = currentUser?.id || '';
         if (!userId) return { ok: false, error: '请先登录' };
 
         let deleted = false;

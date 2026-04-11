@@ -34,6 +34,14 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     return null;
   }
 
+  if (!currentUser?.id) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.emptyText}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
+
   const author = users.find(u => u.id === liveItem.userId) || { name: '未知', avatarColor: '#ccc' };
   const liked = (liveItem.likes || []).includes(currentUser.id);
   const siblingKnowledge = (state.knowledge || [])

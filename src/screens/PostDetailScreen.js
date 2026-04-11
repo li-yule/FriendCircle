@@ -49,6 +49,14 @@ export default function PostDetailScreen({ navigation, route }) {
     );
   }
 
+  if (!currentUser?.id) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.emptyText}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
+
   const author = getUserById(livePost.userId);
   const liked = (livePost.likes || []).includes(currentUser.id);
 
