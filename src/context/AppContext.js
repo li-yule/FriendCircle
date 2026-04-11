@@ -1255,6 +1255,14 @@ function waitMs(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function verifyCommentPersisted(tableName, recordId, commentId) {
+  const res = await supabase.from(tableName).select('comments').eq('id', recordId).maybeSingle();
+  if (res.error || !Array.isArray(res.data?.comments)) return false;
+  return res.data.comments
+    .map(normalizeComment)
+    .some(comment => comment.id === commentId);
+}
+
 async function persistPostCommentWithRetry({ postId, optimisticComment, latestComments }) {
   let lastError = null;
 
@@ -1280,22 +1288,39 @@ async function persistPostCommentWithRetry({ postId, optimisticComment, latestCo
     });
 
     if (!rpcRes.error) {
-      return null;
+      const rpcComments = Array.isArray(rpcRes.data) ? rpcRes.data.map(normalizeComment) : [];
+      const existsInRpcResult = rpcComments.some(comment => comment.id === optimisticComment.id);
+      if (existsInRpcResult || await verifyCommentPersisted('posts', postId, optimisticComment.id)) {
+        return null;
+      }
+      lastError = new Error('comment not persisted after append_post_comment');
     }
 
-    lastError = rpcRes.error;
+    if (rpcRes.error) {
+      lastError = rpcRes.error;
+    }
 
     const retryLatestRes = await supabase.from('posts').select('comments').eq('id', postId).maybeSingle();
     const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
       ? retryLatestRes.data.comments.map(normalizeComment)
       : latestComments;
     const retryComments = mergeCommentsById([...retryLatestComments, optimisticComment], []);
-    const updateRes = await supabase.from('posts').update({ comments: retryComments }).eq('id', postId);
-    if (!updateRes.error) {
+    const updateRes = await supabase
+      .from('posts')
+      .update({ comments: retryComments })
+      .eq('id', postId)
+      .select('comments')
+      .maybeSingle();
+
+    const existsAfterUpdate = !updateRes.error
+      && Array.isArray(updateRes.data?.comments)
+      && updateRes.data.comments.map(normalizeComment).some(comment => comment.id === optimisticComment.id);
+
+    if (existsAfterUpdate || await verifyCommentPersisted('posts', postId, optimisticComment.id)) {
       return null;
     }
 
-    lastError = updateRes.error;
+    lastError = updateRes.error || new Error('comment not persisted after posts.update');
     await waitMs(120 * (attempt + 1));
   }
 
@@ -1329,22 +1354,39 @@ async function persistKnowledgeCommentWithRetry({ knowledgeId, uploadedComment, 
     });
 
     if (!rpcRes.error) {
-      return null;
+      const rpcComments = Array.isArray(rpcRes.data) ? rpcRes.data.map(normalizeComment) : [];
+      const existsInRpcResult = rpcComments.some(comment => comment.id === uploadedComment.id);
+      if (existsInRpcResult || await verifyCommentPersisted('knowledge', knowledgeId, uploadedComment.id)) {
+        return null;
+      }
+      lastError = new Error('comment not persisted after append_knowledge_comment');
     }
 
-    lastError = rpcRes.error;
+    if (rpcRes.error) {
+      lastError = rpcRes.error;
+    }
 
     const retryLatestRes = await supabase.from('knowledge').select('comments').eq('id', knowledgeId).maybeSingle();
     const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
       ? retryLatestRes.data.comments.map(normalizeComment)
       : latestComments;
     const retryComments = mergeCommentsById([...retryLatestComments, uploadedComment], []);
-    const updateRes = await supabase.from('knowledge').update({ comments: retryComments }).eq('id', knowledgeId);
-    if (!updateRes.error) {
+    const updateRes = await supabase
+      .from('knowledge')
+      .update({ comments: retryComments })
+      .eq('id', knowledgeId)
+      .select('comments')
+      .maybeSingle();
+
+    const existsAfterUpdate = !updateRes.error
+      && Array.isArray(updateRes.data?.comments)
+      && updateRes.data.comments.map(normalizeComment).some(comment => comment.id === uploadedComment.id);
+
+    if (existsAfterUpdate || await verifyCommentPersisted('knowledge', knowledgeId, uploadedComment.id)) {
       return null;
     }
 
-    lastError = updateRes.error;
+    lastError = updateRes.error || new Error('comment not persisted after knowledge.update');
     await waitMs(120 * (attempt + 1));
   }
 
