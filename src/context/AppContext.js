@@ -1283,7 +1283,7 @@ function applyCloudPatch(state, patch, currentUserId) {
   };
 
   if (patch?.profiles) {
-    const users = normalizeUsers((patch.profiles || []).map(profile => ({
+    const incomingUsers = normalizeUsers((patch.profiles || []).map(profile => ({
       id: profile.id,
       account: profile.account,
       name: profile.name,
@@ -1293,8 +1293,20 @@ function applyCloudPatch(state, patch, currentUserId) {
       friends: profile.friends,
       subjects: profile.subjects,
     })));
-    nextState.users = users;
-    nextState.currentUser = syncCurrentUser(users, currentUserId || state.currentUser?.id);
+
+    // 避免鉴权短暂抖动时 profiles 空结果把本地用户全部清空
+    if (incomingUsers.length > 0 || ensureArray(state.users).length === 0) {
+      const mergedMap = new Map();
+      ensureArray(state.users).forEach(user => {
+        if (user?.id) mergedMap.set(user.id, normalizeUsers([user])[0]);
+      });
+      incomingUsers.forEach(user => {
+        if (user?.id) mergedMap.set(user.id, user);
+      });
+      const users = Array.from(mergedMap.values());
+      nextState.users = users;
+      nextState.currentUser = syncCurrentUser(users, currentUserId || state.currentUser?.id);
+    }
   }
 
   if (patch?.posts) {
@@ -2318,12 +2330,26 @@ export function AppProvider({ children }) {
           });
         }
 
-        const { error } = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
-        if (error) {
+        let updateError = null;
+        const firstUpdateRes = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
+        updateError = firstUpdateRes.error || null;
+
+        // 并发评论时再拉一次最新评论重试，减少“发送后立刻回滚”
+        if (updateError && action.type === 'ADD_COMMENT' && optimisticComment) {
+          const retryLatestRes = await supabase.from('posts').select('comments').eq('id', postId).maybeSingle();
+          const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
+            ? retryLatestRes.data.comments.map(normalizeComment)
+            : latestComments;
+          const retryComments = mergeCommentsById([...retryLatestComments, optimisticComment], []);
+          const secondUpdateRes = await supabase.from('posts').update({ comments: retryComments }).eq('id', postId);
+          updateError = secondUpdateRes.error || null;
+        }
+
+        if (updateError) {
           if (action.type === 'ADD_COMMENT' && optimisticComment?.id) {
             baseDispatch({ type: 'DELETE_COMMENT', payload: { postId, commentId: optimisticComment.id } });
           }
-          return { ok: false, error: '评论更新失败' };
+          return { ok: false, error: getFriendlyErrorMessage(updateError, '评论发送失败，请稍后重试') };
         }
 
         if (action.type === 'DELETE_COMMENT') {
@@ -2445,10 +2471,23 @@ export function AppProvider({ children }) {
           },
         });
 
-        const { error } = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
-        if (error) {
+        let updateError = null;
+        const firstUpdateRes = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
+        updateError = firstUpdateRes.error || null;
+
+        if (updateError && uploadedComment?.id) {
+          const retryLatestRes = await supabase.from('knowledge').select('comments').eq('id', item.id).maybeSingle();
+          const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
+            ? retryLatestRes.data.comments.map(normalizeComment)
+            : latestComments;
+          const retryComments = mergeCommentsById([...retryLatestComments, uploadedComment], []);
+          const secondUpdateRes = await supabase.from('knowledge').update({ comments: retryComments }).eq('id', item.id);
+          updateError = secondUpdateRes.error || null;
+        }
+
+        if (updateError) {
           baseDispatch({ type: 'DELETE_KNOWLEDGE_COMMENT', payload: { knowledgeId: item.id, commentId: uploadedComment.id } });
-          return { ok: false, error: '评论失败' };
+          return { ok: false, error: getFriendlyErrorMessage(updateError, '评论发送失败，请稍后重试') };
         }
 
         if (item.userId !== currentUser.id) {

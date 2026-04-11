@@ -81,7 +81,18 @@ export default function ProfileScreen({ navigation }) {
     );
   }
 
-  const myFriends = users.filter(u => (safeCurrentUser.friends || []).includes(u.id));
+  const myFriends = (safeCurrentUser.friends || []).map(friendId => {
+    const hit = users.find(u => u.id === friendId);
+    if (hit) return hit;
+    return {
+      id: friendId,
+      name: '账号同步中',
+      bio: '好友资料正在加载，请稍后',
+      avatar: null,
+      avatarColor: '#C8C8C8',
+      friends: [],
+    };
+  });
   const recommendFriends = users.filter(u => {
     if (u.id === currentUserId) return false;
     if ((safeCurrentUser.friends || []).includes(u.id)) return false;
@@ -527,7 +538,11 @@ export default function ProfileScreen({ navigation }) {
               <TouchableOpacity
                 key={friend.id}
                 style={styles.friendItem}
-                onPress={() => navigation.navigate('FriendProfile', { userId: friend.id })}
+                onPress={() => {
+                  const exists = users.some(u => u.id === friend.id);
+                  if (!exists) return;
+                  navigation.navigate('FriendProfile', { userId: friend.id });
+                }}
               >
                 <Avatar user={friend} size={50} />
                 <View style={styles.friendInfo}>
