@@ -182,7 +182,13 @@ export default function ProfileScreen({ navigation }) {
     const result = await dispatch({ type: 'LOGOUT' });
     if (!result?.ok) {
       Alert.alert('退出失败', result?.error || '请稍后重试');
+      return;
     }
+    // 退出成功后，主动重置导航到登录屏幕，而不是依赖状态管理的自动切换
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Auth' }],
+    });
   };
 
   const handleDeleteAccount = () => {
@@ -213,6 +219,11 @@ export default function ProfileScreen({ navigation }) {
                       return;
                     }
                     Alert.alert('已注销', '账号已注销完成');
+                    // 账号删除成功后，重置导航到登录界面
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'Auth' }],
+                    });
                   },
                 },
               ]

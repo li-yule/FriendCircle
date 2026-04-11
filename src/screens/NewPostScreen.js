@@ -24,6 +24,18 @@ export default function NewPostScreen({ navigation }) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 如果用户未登录，显示提示并返回
+  if (!currentUser?.id) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
+        <Text style={{ color: '#6E655C', marginBottom: 16 }}>请先登录后再发布动态</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backBtnText}>返回</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const appendEmoji = (emoji) => {
     setText(prev => `${prev}${emoji}`.slice(0, 1000));
   };
@@ -402,4 +414,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6EEDC',
   },
   uploadingText: { color: '#8A7242', fontSize: 13, flex: 1, lineHeight: 18 },
+  backBtn: { backgroundColor: '#C49A4B', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
+  backBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 });

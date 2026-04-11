@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Image, ScrollView, Alert, KeyboardAvoidingView, Platform, RefreshControl,
@@ -24,6 +24,7 @@ export default function FeedScreen({ navigation }) {
   const [timeFilter, setTimeFilter] = useState('all'); // 'all' | 'today' | 'date'
   const [selectedDate, setSelectedDate] = useState('');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const prefetchCacheRef = useRef(new Set()); // 缓存已预加载的图片URI
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const resolveReplyingName = (comment) => {
@@ -51,6 +52,43 @@ export default function FeedScreen({ navigation }) {
       sourceTab: 'FeedTab',
     });
   };
+
+  // 预加载可见及相邻的图片
+  const prefetchPostImages = (posts) => {
+    if (!posts || posts.length === 0) return;
+    
+    posts.forEach(post => {
+      // 仅预加载图片，视频留给onLoad时处理
+      (post.images || []).forEach(uri => {
+        if (!uri) return;
+        if (prefetchCacheRef.current.has(uri)) return; // 已缓存，跳过
+        prefetchCacheRef.current.add(uri);
+        
+        Image.prefetch(uri).catch(() => {
+          // 预加载失败，但ReliableImage会处理重试
+        });
+      });
+    });
+  };
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (!viewableItems || viewableItems.length === 0) return;
+    
+    // 当前可见的posts
+    const visibleIndices = viewableItems.map(item => item.index).filter(i => i !== null);
+    if (visibleIndices.length === 0) return;
+    
+    const minIndex = Math.min(...visibleIndices);
+    const maxIndex = Math.max(...visibleIndices);
+    
+    // 预加载当前+前后各2个item的图片
+    const prefetchRange = Math.min(2, maxIndex - minIndex + 1);
+    const rangeStart = Math.max(0, minIndex - prefetchRange);
+    const rangeEnd = Math.min(visiblePosts.length - 1, maxIndex + prefetchRange);
+    
+    const postsToPreload = visiblePosts.slice(rangeStart, rangeEnd + 1);
+    prefetchPostImages(postsToPreload);
+  }).current;
 
   const visiblePosts = posts
     .filter(post => visibleUserIds.has(post.userId))
@@ -330,6 +368,10 @@ export default function FeedScreen({ navigation }) {
         windowSize={5}
         removeClippedSubviews
         updateCellBatchingPeriod={80}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={{
+          itemVisiblePercentThreshold: 10,
+        }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#C49A4B" />}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
