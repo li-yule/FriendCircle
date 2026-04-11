@@ -1218,6 +1218,11 @@ async function upsertInteractionMessage({
   throw dedupeRes.error;
 }
 
+function isRpcMissing(error, rpcName) {
+  const msg = String(error?.message || '');
+  return msg.includes(`function public.${rpcName}`) && /does not exist|not found/i.test(msg);
+}
+
 async function fetchCloudPatch(tables) {
   const wanted = new Set(ensureArray(tables));
   const tasks = [];
@@ -1917,7 +1922,8 @@ export function AppProvider({ children }) {
               3500,
               'bootstrap state timeout'
             );
-            baseDispatch({ type: 'LOAD_STATE', payload: buildCloudState(bootstrapSnapshot, authUser.id) });
+            // fetchCloudState 已返回完整状态，不能再重复 buildCloudState，否则会把 users/currentUser 覆盖为空
+            baseDispatch({ type: 'LOAD_STATE', payload: bootstrapSnapshot });
           } catch {
             // 首次同步失败时保持快速登录路径，后续由实时订阅/轮询继续补齐数据
           }
@@ -2101,8 +2107,8 @@ export function AppProvider({ children }) {
         const userId = action.payload?.userId || cloudUserIdRef.current || stateRef.current.currentUser?.id;
         if (!userId) return { ok: false, error: '请先登录' };
 
-        const [snapshot, cloudNotification, inbox] = await Promise.all([
-          fetchCloudState(userId),
+        const [patch, cloudNotification, inbox] = await Promise.all([
+          fetchCloudPatch(['profiles', 'posts', 'plans', 'knowledge']),
           fetchCloudNotificationState(userId).catch(() => null),
           fetchMessageInbox(userId).catch((err) => {
             console.warn('[REFRESH_CLOUD_STATE] 拉取 messages inbox 失败:', err?.message || err);
@@ -2120,13 +2126,14 @@ export function AppProvider({ children }) {
           interactions: inbox.interactions,
         };
 
-        snapshot.notifications = {
+        const nextSnapshot = applyCloudPatch(stateRef.current, patch, userId);
+        nextSnapshot.notifications = {
           ...currentMap,
           [userId]: nextUserNotification,
         };
 
-        baseDispatch({ type: 'LOAD_STATE', payload: snapshot });
-        await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(snapshot.notifications));
+        baseDispatch({ type: 'LOAD_STATE', payload: nextSnapshot });
+        await AsyncStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(nextSnapshot.notifications));
         await AsyncStorage.setItem(getNotificationUserCacheKey(userId), JSON.stringify(nextUserNotification));
         return { ok: true };
       }
@@ -2331,8 +2338,25 @@ export function AppProvider({ children }) {
         }
 
         let updateError = null;
-        const firstUpdateRes = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
-        updateError = firstUpdateRes.error || null;
+
+        if (action.type === 'ADD_COMMENT' && optimisticComment) {
+          const rpcRes = await supabase.rpc('append_post_comment', {
+            p_post_id: postId,
+            p_comment: optimisticComment,
+          });
+
+          if (rpcRes.error && !isRpcMissing(rpcRes.error, 'append_post_comment')) {
+            updateError = rpcRes.error;
+          }
+
+          if (isRpcMissing(rpcRes.error, 'append_post_comment')) {
+            const firstUpdateRes = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
+            updateError = firstUpdateRes.error || null;
+          }
+        } else {
+          const firstUpdateRes = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
+          updateError = firstUpdateRes.error || null;
+        }
 
         // 并发评论时再拉一次最新评论重试，减少“发送后立刻回滚”
         if (updateError && action.type === 'ADD_COMMENT' && optimisticComment) {
@@ -2341,8 +2365,19 @@ export function AppProvider({ children }) {
             ? retryLatestRes.data.comments.map(normalizeComment)
             : latestComments;
           const retryComments = mergeCommentsById([...retryLatestComments, optimisticComment], []);
-          const secondUpdateRes = await supabase.from('posts').update({ comments: retryComments }).eq('id', postId);
-          updateError = secondUpdateRes.error || null;
+          const secondRpcRes = await supabase.rpc('append_post_comment', {
+            p_post_id: postId,
+            p_comment: optimisticComment,
+          });
+
+          if (!secondRpcRes.error) {
+            updateError = null;
+          } else if (isRpcMissing(secondRpcRes.error, 'append_post_comment')) {
+            const secondUpdateRes = await supabase.from('posts').update({ comments: retryComments }).eq('id', postId);
+            updateError = secondUpdateRes.error || null;
+          } else {
+            updateError = secondRpcRes.error;
+          }
         }
 
         if (updateError) {
@@ -2472,8 +2507,19 @@ export function AppProvider({ children }) {
         });
 
         let updateError = null;
-        const firstUpdateRes = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
-        updateError = firstUpdateRes.error || null;
+        const firstRpcRes = await supabase.rpc('append_knowledge_comment', {
+          p_knowledge_id: item.id,
+          p_comment: uploadedComment,
+        });
+
+        if (firstRpcRes.error && !isRpcMissing(firstRpcRes.error, 'append_knowledge_comment')) {
+          updateError = firstRpcRes.error;
+        }
+
+        if (isRpcMissing(firstRpcRes.error, 'append_knowledge_comment')) {
+          const firstUpdateRes = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
+          updateError = firstUpdateRes.error || null;
+        }
 
         if (updateError && uploadedComment?.id) {
           const retryLatestRes = await supabase.from('knowledge').select('comments').eq('id', item.id).maybeSingle();
@@ -2481,8 +2527,19 @@ export function AppProvider({ children }) {
             ? retryLatestRes.data.comments.map(normalizeComment)
             : latestComments;
           const retryComments = mergeCommentsById([...retryLatestComments, uploadedComment], []);
-          const secondUpdateRes = await supabase.from('knowledge').update({ comments: retryComments }).eq('id', item.id);
-          updateError = secondUpdateRes.error || null;
+          const secondRpcRes = await supabase.rpc('append_knowledge_comment', {
+            p_knowledge_id: item.id,
+            p_comment: uploadedComment,
+          });
+
+          if (!secondRpcRes.error) {
+            updateError = null;
+          } else if (isRpcMissing(secondRpcRes.error, 'append_knowledge_comment')) {
+            const secondUpdateRes = await supabase.from('knowledge').update({ comments: retryComments }).eq('id', item.id);
+            updateError = secondUpdateRes.error || null;
+          } else {
+            updateError = secondRpcRes.error;
+          }
         }
 
         if (updateError) {

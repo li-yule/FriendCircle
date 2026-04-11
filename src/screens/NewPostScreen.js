@@ -187,7 +187,10 @@ export default function NewPostScreen({ navigation }) {
       Alert.alert('发布失败', result?.error || '请稍后重试');
       return;
     }
-    dispatch({ type: 'REFRESH_CLOUD_STATE', payload: { userId: currentUser.id } }).catch(() => {});
+    // 媒体异步上传时不要立即全量刷新，避免云端尚未入库导致整条动态被覆盖消失
+    if (!result?.async) {
+      dispatch({ type: 'REFRESH_CLOUD_STATE', payload: { userId: currentUser.id } }).catch(() => {});
+    }
     if (Platform.OS === 'android') {
       ToastAndroid.show(
         result?.async ? '发布成功，媒体后台上传中' : '发布成功',

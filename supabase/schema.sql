@@ -317,6 +317,90 @@ $$;
 revoke all on function public.delete_my_account() from public;
 grant execute on function public.delete_my_account() to authenticated;
 
+create or replace function public.append_post_comment(p_post_id text, p_comment jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  uid uuid := auth.uid();
+  normalized_comment jsonb;
+  updated_comments jsonb;
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  if p_post_id is null or btrim(p_post_id) = '' then
+    raise exception 'post id is required';
+  end if;
+
+  normalized_comment := coalesce(p_comment, '{}'::jsonb);
+  normalized_comment := normalized_comment || jsonb_build_object(
+    'id', coalesce(nullif(normalized_comment ->> 'id', ''), gen_random_uuid()::text),
+    'userId', uid::text,
+    'createdAt', coalesce(nullif(normalized_comment ->> 'createdAt', ''), timezone('utc', now())::text)
+  );
+
+  update public.posts
+  set comments = coalesce(comments, '[]'::jsonb) || jsonb_build_array(normalized_comment)
+  where id = p_post_id
+  returning comments into updated_comments;
+
+  if updated_comments is null then
+    raise exception 'post not found';
+  end if;
+
+  return updated_comments;
+end
+$$;
+
+revoke all on function public.append_post_comment(text, jsonb) from public;
+grant execute on function public.append_post_comment(text, jsonb) to authenticated;
+
+create or replace function public.append_knowledge_comment(p_knowledge_id text, p_comment jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  uid uuid := auth.uid();
+  normalized_comment jsonb;
+  updated_comments jsonb;
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  if p_knowledge_id is null or btrim(p_knowledge_id) = '' then
+    raise exception 'knowledge id is required';
+  end if;
+
+  normalized_comment := coalesce(p_comment, '{}'::jsonb);
+  normalized_comment := normalized_comment || jsonb_build_object(
+    'id', coalesce(nullif(normalized_comment ->> 'id', ''), gen_random_uuid()::text),
+    'userId', uid::text,
+    'createdAt', coalesce(nullif(normalized_comment ->> 'createdAt', ''), timezone('utc', now())::text)
+  );
+
+  update public.knowledge
+  set comments = coalesce(comments, '[]'::jsonb) || jsonb_build_array(normalized_comment)
+  where id = p_knowledge_id
+  returning comments into updated_comments;
+
+  if updated_comments is null then
+    raise exception 'knowledge not found';
+  end if;
+
+  return updated_comments;
+end
+$$;
+
+revoke all on function public.append_knowledge_comment(text, jsonb) from public;
+grant execute on function public.append_knowledge_comment(text, jsonb) to authenticated;
+
 drop policy if exists "posts_select_authenticated" on public.posts;
 create policy "posts_select_authenticated"
 on public.posts for select
