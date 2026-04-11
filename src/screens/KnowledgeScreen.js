@@ -25,6 +25,15 @@ export default function KnowledgeScreen({ navigation }) {
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
   const [searchText, setSearchText] = useState('');
+  const [subjectInput, setSubjectInput] = useState('');
+
+  if (!currentUser?.id) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
+        <Text style={{ color: '#6E655C' }}>正在恢复知识数据...</Text>
+      </View>
+    );
+  }
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const friendIds = new Set(currentUser.friends || []);

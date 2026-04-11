@@ -15,6 +15,14 @@ export default function NewPlanScreen({ navigation, route }) {
   const editingPlan = route?.params?.plan || null;
   const isEditMode = Boolean(editingPlan?.id);
 
+  if (!currentUser?.id) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
+        <Text style={{ color: '#6E655C' }}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
+
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(getTodayStr());
   const [category, setCategory] = useState('study');

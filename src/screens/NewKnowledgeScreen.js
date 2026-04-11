@@ -15,6 +15,14 @@ export default function NewKnowledgeScreen({ navigation, route }) {
   const { currentUser } = state;
   const existing = route.params?.item;
 
+  if (!currentUser?.id) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F4EE' }}>
+        <Text style={{ color: '#6E655C' }}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
+
   const userSubjects = currentUser.subjects || [];
   const defaultSubject = existing?.subject || userSubjects[0] || '数学';
 
