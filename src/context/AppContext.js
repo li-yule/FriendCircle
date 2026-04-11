@@ -1283,11 +1283,7 @@ async function persistPostCommentWithRetry({ postId, optimisticComment, latestCo
       return null;
     }
 
-    if (!isRpcMissing(rpcRes.error, 'append_post_comment')) {
-      lastError = rpcRes.error;
-      await waitMs(120 * (attempt + 1));
-      continue;
-    }
+    lastError = rpcRes.error;
 
     const retryLatestRes = await supabase.from('posts').select('comments').eq('id', postId).maybeSingle();
     const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
@@ -1336,11 +1332,7 @@ async function persistKnowledgeCommentWithRetry({ knowledgeId, uploadedComment, 
       return null;
     }
 
-    if (!isRpcMissing(rpcRes.error, 'append_knowledge_comment')) {
-      lastError = rpcRes.error;
-      await waitMs(120 * (attempt + 1));
-      continue;
-    }
+    lastError = rpcRes.error;
 
     const retryLatestRes = await supabase.from('knowledge').select('comments').eq('id', knowledgeId).maybeSingle();
     const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
@@ -2633,7 +2625,7 @@ export function AppProvider({ children }) {
             sourcePreview: post.text,
             comment: optimisticComment,
             retries: 0,
-            nextRetryAt: computeNextRetryAt(0),
+            nextRetryAt: Date.now(),
             lastError: String(updateError?.message || updateError || ''),
           });
           flushPendingComments().catch(() => {});
@@ -2776,7 +2768,7 @@ export function AppProvider({ children }) {
             sourcePreview: item.question,
             comment: uploadedComment,
             retries: 0,
-            nextRetryAt: computeNextRetryAt(0),
+            nextRetryAt: Date.now(),
             lastError: String(updateError?.message || updateError || ''),
           });
           flushPendingComments().catch(() => {});

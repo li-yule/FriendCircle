@@ -126,7 +126,6 @@ export default function FeedScreen({ navigation }) {
     setCommentInput(prev => ({ ...prev, [postId]: '' }));
     setReplyTarget(prev => ({ ...prev, [postId]: null }));
     setShowEmojiPicker(prev => ({ ...prev, [postId]: false }));
-    setExpandedComments(prev => ({ ...prev, [postId]: false }));
 
     const result = await dispatch({
       type: 'ADD_COMMENT',
