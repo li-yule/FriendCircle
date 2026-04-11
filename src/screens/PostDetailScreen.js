@@ -91,10 +91,7 @@ export default function PostDetailScreen({ navigation, route }) {
       },
     });
 
-    if (!result?.ok) {
-      Alert.alert('评论失败', result?.error || '请稍后重试');
-      return;
-    }
+    if (!result?.ok) return;
     setCommentText('');
     setReplyTarget(null);
     setShowEmojiPicker(false);

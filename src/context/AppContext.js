@@ -1218,6 +1218,98 @@ async function upsertInteractionMessage({
   throw dedupeRes.error;
 }
 
+function waitMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function persistPostCommentWithRetry({ postId, optimisticComment, latestComments }) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const rpcRes = await supabase.rpc('append_post_comment', {
+      p_post_id: postId,
+      p_comment: {
+        id: optimisticComment.id,
+        userId: optimisticComment.userId,
+        replyToUserId: optimisticComment.replyToUserId || '',
+        replyToUserName: optimisticComment.replyToUserName || '',
+        text: optimisticComment.text || '',
+        createdAt: optimisticComment.createdAt,
+      },
+    });
+
+    if (!rpcRes.error) {
+      return null;
+    }
+
+    if (!isRpcMissing(rpcRes.error, 'append_post_comment')) {
+      lastError = rpcRes.error;
+      await waitMs(120 * (attempt + 1));
+      continue;
+    }
+
+    const retryLatestRes = await supabase.from('posts').select('comments').eq('id', postId).maybeSingle();
+    const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
+      ? retryLatestRes.data.comments.map(normalizeComment)
+      : latestComments;
+    const retryComments = mergeCommentsById([...retryLatestComments, optimisticComment], []);
+    const updateRes = await supabase.from('posts').update({ comments: retryComments }).eq('id', postId);
+    if (!updateRes.error) {
+      return null;
+    }
+
+    lastError = updateRes.error;
+    await waitMs(120 * (attempt + 1));
+  }
+
+  return lastError;
+}
+
+async function persistKnowledgeCommentWithRetry({ knowledgeId, uploadedComment, latestComments }) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const rpcRes = await supabase.rpc('append_knowledge_comment', {
+      p_knowledge_id: knowledgeId,
+      p_comment: {
+        id: uploadedComment.id,
+        userId: uploadedComment.userId,
+        replyToUserId: uploadedComment.replyToUserId || '',
+        replyToUserName: uploadedComment.replyToUserName || '',
+        text: uploadedComment.text || '',
+        images: uploadedComment.images || [],
+        audioFiles: uploadedComment.audioFiles || [],
+        createdAt: uploadedComment.createdAt,
+      },
+    });
+
+    if (!rpcRes.error) {
+      return null;
+    }
+
+    if (!isRpcMissing(rpcRes.error, 'append_knowledge_comment')) {
+      lastError = rpcRes.error;
+      await waitMs(120 * (attempt + 1));
+      continue;
+    }
+
+    const retryLatestRes = await supabase.from('knowledge').select('comments').eq('id', knowledgeId).maybeSingle();
+    const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
+      ? retryLatestRes.data.comments.map(normalizeComment)
+      : latestComments;
+    const retryComments = mergeCommentsById([...retryLatestComments, uploadedComment], []);
+    const updateRes = await supabase.from('knowledge').update({ comments: retryComments }).eq('id', knowledgeId);
+    if (!updateRes.error) {
+      return null;
+    }
+
+    lastError = updateRes.error;
+    await waitMs(120 * (attempt + 1));
+  }
+
+  return lastError;
+}
+
 function isRpcMissing(error, rpcName) {
   const msg = String(error?.message || '');
   return msg.includes(`function public.${rpcName}`) && /does not exist|not found/i.test(msg);
@@ -2340,51 +2432,20 @@ export function AppProvider({ children }) {
         let updateError = null;
 
         if (action.type === 'ADD_COMMENT' && optimisticComment) {
-          const rpcRes = await supabase.rpc('append_post_comment', {
-            p_post_id: postId,
-            p_comment: optimisticComment,
+          updateError = await persistPostCommentWithRetry({
+            postId,
+            optimisticComment,
+            latestComments,
           });
-
-          if (rpcRes.error && !isRpcMissing(rpcRes.error, 'append_post_comment')) {
-            updateError = rpcRes.error;
-          }
-
-          if (isRpcMissing(rpcRes.error, 'append_post_comment')) {
-            const firstUpdateRes = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
-            updateError = firstUpdateRes.error || null;
-          }
         } else {
           const firstUpdateRes = await supabase.from('posts').update({ comments: nextComments }).eq('id', postId);
           updateError = firstUpdateRes.error || null;
         }
 
-        // 并发评论时再拉一次最新评论重试，减少“发送后立刻回滚”
-        if (updateError && action.type === 'ADD_COMMENT' && optimisticComment) {
-          const retryLatestRes = await supabase.from('posts').select('comments').eq('id', postId).maybeSingle();
-          const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
-            ? retryLatestRes.data.comments.map(normalizeComment)
-            : latestComments;
-          const retryComments = mergeCommentsById([...retryLatestComments, optimisticComment], []);
-          const secondRpcRes = await supabase.rpc('append_post_comment', {
-            p_post_id: postId,
-            p_comment: optimisticComment,
-          });
-
-          if (!secondRpcRes.error) {
-            updateError = null;
-          } else if (isRpcMissing(secondRpcRes.error, 'append_post_comment')) {
-            const secondUpdateRes = await supabase.from('posts').update({ comments: retryComments }).eq('id', postId);
-            updateError = secondUpdateRes.error || null;
-          } else {
-            updateError = secondRpcRes.error;
-          }
-        }
-
         if (updateError) {
-          if (action.type === 'ADD_COMMENT' && optimisticComment?.id) {
-            baseDispatch({ type: 'DELETE_COMMENT', payload: { postId, commentId: optimisticComment.id } });
-          }
-          return { ok: false, error: getFriendlyErrorMessage(updateError, '评论发送失败，请稍后重试') };
+          // 保留本地评论，避免输入框回退和评论瞬间消失；后台继续依赖轮询/下次交互重试同步
+          console.warn('[ADD_COMMENT] 持久化失败，保留本地评论并延迟重试:', updateError?.message || updateError);
+          return { ok: true, pending: true };
         }
 
         if (action.type === 'DELETE_COMMENT') {
@@ -2506,45 +2567,16 @@ export function AppProvider({ children }) {
           },
         });
 
-        let updateError = null;
-        const firstRpcRes = await supabase.rpc('append_knowledge_comment', {
-          p_knowledge_id: item.id,
-          p_comment: uploadedComment,
+        const updateError = await persistKnowledgeCommentWithRetry({
+          knowledgeId: item.id,
+          uploadedComment,
+          latestComments,
         });
 
-        if (firstRpcRes.error && !isRpcMissing(firstRpcRes.error, 'append_knowledge_comment')) {
-          updateError = firstRpcRes.error;
-        }
-
-        if (isRpcMissing(firstRpcRes.error, 'append_knowledge_comment')) {
-          const firstUpdateRes = await supabase.from('knowledge').update({ comments: nextComments }).eq('id', item.id);
-          updateError = firstUpdateRes.error || null;
-        }
-
-        if (updateError && uploadedComment?.id) {
-          const retryLatestRes = await supabase.from('knowledge').select('comments').eq('id', item.id).maybeSingle();
-          const retryLatestComments = !retryLatestRes.error && Array.isArray(retryLatestRes.data?.comments)
-            ? retryLatestRes.data.comments.map(normalizeComment)
-            : latestComments;
-          const retryComments = mergeCommentsById([...retryLatestComments, uploadedComment], []);
-          const secondRpcRes = await supabase.rpc('append_knowledge_comment', {
-            p_knowledge_id: item.id,
-            p_comment: uploadedComment,
-          });
-
-          if (!secondRpcRes.error) {
-            updateError = null;
-          } else if (isRpcMissing(secondRpcRes.error, 'append_knowledge_comment')) {
-            const secondUpdateRes = await supabase.from('knowledge').update({ comments: retryComments }).eq('id', item.id);
-            updateError = secondUpdateRes.error || null;
-          } else {
-            updateError = secondRpcRes.error;
-          }
-        }
-
         if (updateError) {
-          baseDispatch({ type: 'DELETE_KNOWLEDGE_COMMENT', payload: { knowledgeId: item.id, commentId: uploadedComment.id } });
-          return { ok: false, error: getFriendlyErrorMessage(updateError, '评论发送失败，请稍后重试') };
+          // 保留本地评论，避免输入框回退和评论瞬间消失；后台继续依赖轮询/下次交互重试同步
+          console.warn('[ADD_KNOWLEDGE_COMMENT] 持久化失败，保留本地评论并延迟重试:', updateError?.message || updateError);
+          return { ok: true, pending: true };
         }
 
         if (item.userId !== currentUser.id) {
