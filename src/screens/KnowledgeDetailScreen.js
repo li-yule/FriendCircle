@@ -188,6 +188,18 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
 
   const handleComment = async () => {
     if (!commentText.trim() && commentImages.length === 0 && commentAudioFiles.length === 0) return;
+
+    // 先清空输入，避免评论发送抖动导致文本回弹
+    const text = commentText.trim();
+    const images = commentImages;
+    const audioFiles = commentAudioFiles;
+    const previousReply = replyTarget;
+    setCommentText('');
+    setCommentImages([]);
+    setCommentAudioFiles([]);
+    setReplyTarget(null);
+    setShowEmojiPicker(false);
+
     const result = await dispatch({
       type: 'ADD_KNOWLEDGE_COMMENT',
       payload: {
@@ -195,21 +207,16 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         comment: {
           id: generateId(),
           userId: currentUser.id,
-          replyToUserId: replyTarget?.id || '',
-          replyToUserName: replyTarget?.name || '',
-          text: commentText.trim(),
-          images: commentImages,
-          audioFiles: commentAudioFiles,
+          replyToUserId: previousReply?.id || '',
+          replyToUserName: previousReply?.name || '',
+          text,
+          images,
+          audioFiles,
           createdAt: new Date().toISOString(),
         },
       },
     });
     if (!result?.ok) return;
-    setCommentText('');
-    setCommentImages([]);
-    setCommentAudioFiles([]);
-    setReplyTarget(null);
-    setShowEmojiPicker(false);
   };
 
   const appendEmoji = (emoji) => {

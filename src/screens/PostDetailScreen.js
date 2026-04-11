@@ -76,6 +76,13 @@ export default function PostDetailScreen({ navigation, route }) {
   const handleComment = async () => {
     const text = commentText.trim();
     if (!text) return;
+
+    // 先清空输入，避免评论发送抖动导致文本回弹
+    setCommentText('');
+    const previousReply = replyTarget;
+    setReplyTarget(null);
+    setShowEmojiPicker(false);
+
     const result = await dispatch({
       type: 'ADD_COMMENT',
       payload: {
@@ -83,8 +90,8 @@ export default function PostDetailScreen({ navigation, route }) {
         comment: {
           id: generateId(),
           userId: currentUser.id,
-          replyToUserId: replyTarget?.id || '',
-          replyToUserName: replyTarget?.name || '',
+          replyToUserId: previousReply?.id || '',
+          replyToUserName: previousReply?.name || '',
           text,
           createdAt: new Date().toISOString(),
         },
@@ -92,9 +99,6 @@ export default function PostDetailScreen({ navigation, route }) {
     });
 
     if (!result?.ok) return;
-    setCommentText('');
-    setReplyTarget(null);
-    setShowEmojiPicker(false);
   };
 
   const handleDelete = () => {

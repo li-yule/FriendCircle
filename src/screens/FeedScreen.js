@@ -122,6 +122,12 @@ export default function FeedScreen({ navigation }) {
     const text = commentInput[postId]?.trim();
     if (!text) return;
     const replyTo = replyTarget[postId] || null;
+    // 先清空输入区，避免网络抖动时出现“退回输入框”的卡顿体验
+    setCommentInput(prev => ({ ...prev, [postId]: '' }));
+    setReplyTarget(prev => ({ ...prev, [postId]: null }));
+    setShowEmojiPicker(prev => ({ ...prev, [postId]: false }));
+    setExpandedComments(prev => ({ ...prev, [postId]: false }));
+
     const result = await dispatch({
       type: 'ADD_COMMENT',
       payload: {
@@ -137,10 +143,6 @@ export default function FeedScreen({ navigation }) {
       },
     });
     if (!result?.ok) return;
-    setCommentInput(prev => ({ ...prev, [postId]: '' }));
-    setReplyTarget(prev => ({ ...prev, [postId]: null }));
-    setShowEmojiPicker(prev => ({ ...prev, [postId]: false }));
-    setExpandedComments(prev => ({ ...prev, [postId]: false }));
   };
 
   const openPostDetail = (postId) => {
