@@ -22,9 +22,12 @@ const AUTH_CACHE_KEY = 'friendcircle_auth_cache_v1';
 const CURRENT_USER_CACHE_KEY = 'friendcircle_current_user_cache_v1';
 const NOTIFICATIONS_CACHE_KEY = 'friendcircle_notifications_cache_v1';
 const STATE_CACHE_KEY = 'friendcircle_state_cache_v1';
+const PENDING_COMMENT_QUEUE_KEY = 'friendcircle_pending_comment_queue_v1';
 const PLAN_DONE_MARKER_ID = '__plan_done__';
 const PLAN_CATEGORY_MARKER_ID = '__plan_category__';
 const LOCAL_NEW_ITEM_KEEP_MS = 120000;
+const COMMENT_RETRY_BASE_DELAY_MS = 4000;
+const COMMENT_RETRY_MAX_DELAY_MS = 120000;
 
 function getNotificationUserCacheKey(userId) {
   return `friendcircle_notifications_cache_${userId}`;
@@ -1173,6 +1176,36 @@ async function clearLocalSessionCache(userId) {
   await AsyncStorage.multiRemove(keys);
 }
 
+function normalizePendingCommentTask(task) {
+  if (!task || typeof task !== 'object') return null;
+  const type = task.type === 'knowledge' ? 'knowledge' : 'post';
+  const targetId = String(task.targetId || '').trim();
+  const actorUserId = String(task.actorUserId || '').trim();
+  const comment = normalizeComment(task.comment || {});
+  if (!targetId || !actorUserId || !comment?.id) return null;
+
+  return {
+    type,
+    targetId,
+    actorUserId,
+    ownerUserId: String(task.ownerUserId || '').trim(),
+    sourcePreview: String(task.sourcePreview || ''),
+    comment,
+    retries: Number(task.retries || 0),
+    nextRetryAt: Number(task.nextRetryAt || 0),
+    lastError: String(task.lastError || ''),
+  };
+}
+
+function buildPendingCommentTaskKey(task) {
+  return `${task.type}:${task.targetId}:${task.actorUserId}:${task.comment.id}`;
+}
+
+function computeNextRetryAt(retries) {
+  const delay = Math.min(COMMENT_RETRY_BASE_DELAY_MS * (2 ** Math.min(retries, 5)), COMMENT_RETRY_MAX_DELAY_MS);
+  return Date.now() + delay;
+}
+
 async function upsertInteractionMessage({
   userId,
   actorId,
@@ -1226,6 +1259,14 @@ async function persistPostCommentWithRetry({ postId, optimisticComment, latestCo
   let lastError = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    const latestRes = await supabase.from('posts').select('comments').eq('id', postId).maybeSingle();
+    if (!latestRes.error && Array.isArray(latestRes.data?.comments)) {
+      const exists = latestRes.data.comments
+        .map(normalizeComment)
+        .some(comment => comment.id === optimisticComment.id);
+      if (exists) return null;
+    }
+
     const rpcRes = await supabase.rpc('append_post_comment', {
       p_post_id: postId,
       p_comment: {
@@ -1269,6 +1310,14 @@ async function persistKnowledgeCommentWithRetry({ knowledgeId, uploadedComment, 
   let lastError = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    const latestRes = await supabase.from('knowledge').select('comments').eq('id', knowledgeId).maybeSingle();
+    if (!latestRes.error && Array.isArray(latestRes.data?.comments)) {
+      const exists = latestRes.data.comments
+        .map(normalizeComment)
+        .some(comment => comment.id === uploadedComment.id);
+      if (exists) return null;
+    }
+
     const rpcRes = await supabase.rpc('append_knowledge_comment', {
       p_knowledge_id: knowledgeId,
       p_comment: {
@@ -1511,6 +1560,9 @@ export function AppProvider({ children }) {
   const refreshTimerRef = useRef(null);
   const pollTimerRef = useRef(null);
   const pendingTablesRef = useRef(new Set());
+  const pendingCommentQueueRef = useRef([]);
+  const pendingCommentQueueLoadedRef = useRef(false);
+  const pendingCommentFlushRef = useRef(false);
   const authBootstrappingRef = useRef(true);
   const localMutationMuteRef = useRef({
     profiles: 0,
@@ -1522,6 +1574,130 @@ export function AppProvider({ children }) {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  const savePendingCommentQueue = async (queue) => {
+    pendingCommentQueueRef.current = ensureArray(queue);
+    try {
+      await AsyncStorage.setItem(PENDING_COMMENT_QUEUE_KEY, JSON.stringify(pendingCommentQueueRef.current));
+    } catch {
+      // 忽略本地缓存写入失败，避免阻断主流程
+    }
+  };
+
+  const enqueuePendingComment = async (task) => {
+    const normalized = normalizePendingCommentTask(task);
+    if (!normalized) return;
+
+    const nextMap = new Map();
+    ensureArray(pendingCommentQueueRef.current).forEach(item => {
+      const normalizedItem = normalizePendingCommentTask(item);
+      if (!normalizedItem) return;
+      nextMap.set(buildPendingCommentTaskKey(normalizedItem), normalizedItem);
+    });
+
+    nextMap.set(buildPendingCommentTaskKey(normalized), normalized);
+    await savePendingCommentQueue(Array.from(nextMap.values()));
+  };
+
+  const flushPendingComments = async () => {
+    if (!isSupabaseConfigured) return;
+    if (!pendingCommentQueueLoadedRef.current) return;
+    if (pendingCommentFlushRef.current) return;
+    const activeUserId = cloudUserIdRef.current;
+    if (!activeUserId) return;
+
+    pendingCommentFlushRef.current = true;
+    try {
+      const now = Date.now();
+      const nextQueue = [];
+
+      for (const rawTask of ensureArray(pendingCommentQueueRef.current)) {
+        const task = normalizePendingCommentTask(rawTask);
+        if (!task) continue;
+
+        if (task.actorUserId !== activeUserId) {
+          nextQueue.push(task);
+          continue;
+        }
+
+        if (task.nextRetryAt > now) {
+          nextQueue.push(task);
+          continue;
+        }
+
+        let persistError = null;
+        if (task.type === 'post') {
+          persistError = await persistPostCommentWithRetry({
+            postId: task.targetId,
+            optimisticComment: task.comment,
+            latestComments: [],
+          });
+        } else {
+          persistError = await persistKnowledgeCommentWithRetry({
+            knowledgeId: task.targetId,
+            uploadedComment: task.comment,
+            latestComments: [],
+          });
+        }
+
+        if (persistError) {
+          const retries = Number(task.retries || 0) + 1;
+          nextQueue.push({
+            ...task,
+            retries,
+            lastError: String(persistError?.message || persistError || ''),
+            nextRetryAt: computeNextRetryAt(retries),
+          });
+          continue;
+        }
+
+        if (task.ownerUserId && task.ownerUserId !== task.actorUserId) {
+          try {
+            await upsertInteractionMessage({
+              userId: task.ownerUserId,
+              actorId: task.actorUserId,
+              sourceType: task.type,
+              sourceId: task.targetId,
+              sourcePreview: task.sourcePreview,
+              content: task.comment.text,
+              sourceCommentId: task.comment.id,
+            });
+          } catch {
+            // 消息写入失败不阻塞评论成功落库
+          }
+        }
+      }
+
+      await savePendingCommentQueue(nextQueue);
+    } finally {
+      pendingCommentFlushRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(PENDING_COMMENT_QUEUE_KEY)
+      .then(raw => {
+        if (!active) return;
+        const parsed = raw ? JSON.parse(raw) : [];
+        const normalized = ensureArray(parsed)
+          .map(normalizePendingCommentTask)
+          .filter(Boolean);
+        pendingCommentQueueRef.current = normalized;
+      })
+      .catch(() => {
+        if (!active) return;
+        pendingCommentQueueRef.current = [];
+      })
+      .finally(() => {
+        if (!active) return;
+        pendingCommentQueueLoadedRef.current = true;
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !currentUserId) return undefined;
@@ -1805,6 +1981,7 @@ export function AppProvider({ children }) {
         if (data.session?.user) {
           cloudUserIdRef.current = data.session.user.id;
           await hydrate(data.session.user.id);
+          await flushPendingComments();
         } else {
           // 兜底：进程被系统杀死后如果 session 丢失，尝试使用最近一次成功登录凭据自动恢复
           const cacheRaw = await AsyncStorage.getItem(AUTH_CACHE_KEY);
@@ -1820,6 +1997,7 @@ export function AppProvider({ children }) {
             if (signInRes?.data?.user?.id) {
               cloudUserIdRef.current = signInRes.data.user.id;
               await hydrate(signInRes.data.user.id);
+              await flushPendingComments();
               return;
             }
           }
@@ -1891,6 +2069,7 @@ export function AppProvider({ children }) {
       const userId = cloudUserIdRef.current;
       if (!userId || !active) return;
       refreshCloudNow(userId, ['posts', 'plans', 'knowledge']).catch(() => {});
+      flushPendingComments().catch(() => {});
     }, CLOUD_POLL_INTERVAL_MS);
 
     loadCloud();
@@ -1900,6 +2079,7 @@ export function AppProvider({ children }) {
       const userId = cloudUserIdRef.current;
       if (!userId) return;
       refreshCloudNow(userId, ['profiles', 'posts', 'plans', 'knowledge']).catch(() => {});
+      flushPendingComments().catch(() => {});
     });
 
     return () => {
@@ -2445,6 +2625,18 @@ export function AppProvider({ children }) {
         if (updateError) {
           // 保留本地评论，避免输入框回退和评论瞬间消失；后台继续依赖轮询/下次交互重试同步
           console.warn('[ADD_COMMENT] 持久化失败，保留本地评论并延迟重试:', updateError?.message || updateError);
+          await enqueuePendingComment({
+            type: 'post',
+            targetId: postId,
+            actorUserId: currentUser.id,
+            ownerUserId: post.userId,
+            sourcePreview: post.text,
+            comment: optimisticComment,
+            retries: 0,
+            nextRetryAt: computeNextRetryAt(0),
+            lastError: String(updateError?.message || updateError || ''),
+          });
+          flushPendingComments().catch(() => {});
           return { ok: true, pending: true };
         }
 
@@ -2576,6 +2768,18 @@ export function AppProvider({ children }) {
         if (updateError) {
           // 保留本地评论，避免输入框回退和评论瞬间消失；后台继续依赖轮询/下次交互重试同步
           console.warn('[ADD_KNOWLEDGE_COMMENT] 持久化失败，保留本地评论并延迟重试:', updateError?.message || updateError);
+          await enqueuePendingComment({
+            type: 'knowledge',
+            targetId: item.id,
+            actorUserId: currentUser.id,
+            ownerUserId: item.userId,
+            sourcePreview: item.question,
+            comment: uploadedComment,
+            retries: 0,
+            nextRetryAt: computeNextRetryAt(0),
+            lastError: String(updateError?.message || updateError || ''),
+          });
+          flushPendingComments().catch(() => {});
           return { ok: true, pending: true };
         }
 

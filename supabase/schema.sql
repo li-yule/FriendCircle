@@ -343,6 +343,20 @@ begin
     'createdAt', coalesce(nullif(normalized_comment ->> 'createdAt', ''), timezone('utc', now())::text)
   );
 
+  if exists (
+    select 1
+    from public.posts p,
+    lateral jsonb_array_elements(coalesce(p.comments, '[]'::jsonb)) as c(value)
+    where p.id = p_post_id
+      and coalesce(c.value ->> 'id', '') = coalesce(normalized_comment ->> 'id', '')
+  ) then
+    select comments into updated_comments from public.posts where id = p_post_id;
+    if updated_comments is null then
+      raise exception 'post not found';
+    end if;
+    return updated_comments;
+  end if;
+
   update public.posts
   set comments = coalesce(comments, '[]'::jsonb) || jsonb_build_array(normalized_comment)
   where id = p_post_id
@@ -384,6 +398,20 @@ begin
     'userId', uid::text,
     'createdAt', coalesce(nullif(normalized_comment ->> 'createdAt', ''), timezone('utc', now())::text)
   );
+
+  if exists (
+    select 1
+    from public.knowledge k,
+    lateral jsonb_array_elements(coalesce(k.comments, '[]'::jsonb)) as c(value)
+    where k.id = p_knowledge_id
+      and coalesce(c.value ->> 'id', '') = coalesce(normalized_comment ->> 'id', '')
+  ) then
+    select comments into updated_comments from public.knowledge where id = p_knowledge_id;
+    if updated_comments is null then
+      raise exception 'knowledge not found';
+    end if;
+    return updated_comments;
+  end if;
 
   update public.knowledge
   set comments = coalesce(comments, '[]'::jsonb) || jsonb_build_array(normalized_comment)
