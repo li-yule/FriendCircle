@@ -10,9 +10,9 @@ import { isSupabaseConfigured, mediaBucketName, supabase } from '../lib/supabase
 const AppContext = createContext(null);
 const DEFAULT_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF85A1', '#87CEEB', '#95E1D3'];
 const CLOUD_CONFIG_REQUIRED_MESSAGE = '当前版本仅支持云端存储，请先配置 Supabase 环境变量后再使用。';
-const CLOUD_POSTS_LIMIT = 80;
-const CLOUD_PLANS_LIMIT = 80;
-const CLOUD_KNOWLEDGE_LIMIT = 80;
+const CLOUD_POSTS_LIMIT = 300;
+const CLOUD_PLANS_LIMIT = 200;
+const CLOUD_KNOWLEDGE_LIMIT = 200;
 const CLOUD_POLL_INTERVAL_MS = 12000;
 const AUTH_REQUEST_TIMEOUT_MS = 15000;
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
