@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Alert,
@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
-import { formatDate, formatDateKey, toDateKey } from '../utils/helpers';
+import { formatDate, formatDateKey, generateId, toDateKey } from '../utils/helpers';
 import DatePickerSheet from '../components/DatePickerSheet';
 
 export default function PlanScreen({ navigation }) {
@@ -18,6 +18,7 @@ export default function PlanScreen({ navigation }) {
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
   const [pickerVisible, setPickerVisible] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'study' | 'life'
+  const rolloverRunningRef = useRef(false);
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const myFriendIds = new Set(safeCurrentUser.friends || []);
@@ -45,6 +46,105 @@ export default function PlanScreen({ navigation }) {
       setSelectedDate(todayKey);
     }
   }, [availableDateKeys, selectedDate]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    if (rolloverRunningRef.current) return;
+
+    const myAllPlans = plans.filter(item => item.userId === currentUserId);
+    if (myAllPlans.length === 0) return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayKey = toDateKey(today);
+
+    const buildTaskFingerprint = (taskList) => (taskList || [])
+      .map(task => String(task?.text || '').trim())
+      .filter(Boolean)
+      .join('||');
+
+    const buildPlanFingerprint = (plan, dateKey) => {
+      const title = String(plan?.title || '').trim();
+      const category = String(plan?.category || 'study').trim().toLowerCase() === 'life' ? 'life' : 'study';
+      const taskFingerprint = buildTaskFingerprint(plan?.tasks || []);
+      return `${currentUserId}|${title}|${category}|${dateKey}|${taskFingerprint}`;
+    };
+
+    const existingTodayFingerprints = new Set(
+      myAllPlans
+        .filter(plan => toDateKey(plan.date) === todayKey)
+        .map(plan => buildPlanFingerprint(plan, todayKey))
+    );
+
+    const carryList = myAllPlans.filter(plan => {
+      const planDate = new Date(plan.date);
+      if (Number.isNaN(planDate.getTime())) return false;
+      planDate.setHours(0, 0, 0, 0);
+      if (planDate.getTime() >= today.getTime()) return false;
+
+      const tasks = plan.tasks || [];
+      const taskDone = tasks.length > 0 && tasks.every(task => task.done);
+      return !(plan.done || taskDone);
+    });
+
+    if (carryList.length === 0) return;
+
+    let cancelled = false;
+    rolloverRunningRef.current = true;
+
+    const run = async () => {
+      try {
+        for (const sourcePlan of carryList) {
+          if (cancelled) break;
+
+          const unfinishedTasks = (sourcePlan.tasks || [])
+            .filter(task => !task.done)
+            .map(task => ({
+              id: generateId(),
+              text: task.text || '',
+              done: false,
+              reminderTime: task.reminderTime || '',
+            }));
+
+          const carryDraft = {
+            id: generateId(),
+            userId: currentUserId,
+            title: sourcePlan.title || '',
+            date: today.toISOString(),
+            category: sourcePlan.category === 'life' ? 'life' : 'study',
+            tasks: unfinishedTasks,
+            done: false,
+            reminderAt: '',
+            createdAt: new Date().toISOString(),
+          };
+
+          const fingerprint = buildPlanFingerprint(carryDraft, todayKey);
+          if (existingTodayFingerprints.has(fingerprint)) {
+            continue;
+          }
+
+          const result = await dispatch({
+            type: 'ADD_PLAN',
+            payload: carryDraft,
+          });
+
+          if (result?.ok) {
+            existingTodayFingerprints.add(fingerprint);
+          }
+        }
+      } finally {
+        rolloverRunningRef.current = false;
+      }
+    };
+
+    run().catch(() => {
+      rolloverRunningRef.current = false;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId, dispatch, plans]);
 
   if (!currentUserId) {
     return (

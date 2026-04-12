@@ -98,7 +98,9 @@ export default function PostDetailScreen({ navigation, route }) {
       },
     });
 
-    if (!result?.ok) return;
+    if (!result?.ok) {
+      Alert.alert('评论失败', result?.error || '请稍后重试');
+    }
   };
 
   const handleDelete = () => {

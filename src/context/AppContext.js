@@ -1297,6 +1297,9 @@ async function persistPostCommentWithRetry({ postId, optimisticComment, latestCo
     }
 
     if (rpcRes.error) {
+      if (/post not found/i.test(String(rpcRes.error?.message || ''))) {
+        return rpcRes.error;
+      }
       lastError = rpcRes.error;
     }
 
@@ -1363,6 +1366,9 @@ async function persistKnowledgeCommentWithRetry({ knowledgeId, uploadedComment, 
     }
 
     if (rpcRes.error) {
+      if (/knowledge not found/i.test(String(rpcRes.error?.message || ''))) {
+        return rpcRes.error;
+      }
       lastError = rpcRes.error;
     }
 
@@ -1396,6 +1402,40 @@ async function persistKnowledgeCommentWithRetry({ knowledgeId, uploadedComment, 
 function isRpcMissing(error, rpcName) {
   const msg = String(error?.message || '');
   return msg.includes(`function public.${rpcName}`) && /does not exist|not found/i.test(msg);
+}
+
+function classifyCommentPersistError(error, rpcName) {
+  const message = String(error?.message || '').toLowerCase();
+  if (!message) return null;
+  if (/post not found|knowledge not found/.test(message)) {
+    return {
+      blocking: true,
+      message: '目标内容尚未同步到云端或已被删除，请下拉刷新后重试评论。',
+    };
+  }
+
+  if (isRpcMissing(error, rpcName)) {
+    return {
+      blocking: true,
+      message: '评论功能依赖数据库函数未创建，请在 Supabase SQL Editor 重新执行最新 schema.sql 后再试。',
+    };
+  }
+
+  if (/relation .* does not exist|column .* does not exist|schema cache/i.test(message)) {
+    return {
+      blocking: true,
+      message: '评论功能依赖的云端表结构版本较旧，请在 Supabase SQL Editor 执行最新 schema.sql。',
+    };
+  }
+
+  if (/row-level security|rls|permission denied|violates row-level security policy/i.test(message)) {
+    return {
+      blocking: true,
+      message: '评论写入被数据库权限策略拦截，请检查并重新执行 schema.sql 中的 RLS policy。',
+    };
+  }
+
+  return null;
 }
 
 async function fetchCloudPatch(tables) {
@@ -1470,8 +1510,7 @@ function applyCloudPatch(state, patch, currentUserId) {
       bio: profile.bio,
       avatar: profile.avatar,
       avatarColor: profile.avatar_color,
-      friends: profile.friends,
-      subjects: profile.subjects,
+            .map(normalizeComment).some(comment => comment.id === uploadedComment.id);
     })));
 
     // 避免鉴权短暂抖动时 profiles 空结果把本地用户全部清空
@@ -2657,7 +2696,21 @@ export function AppProvider({ children }) {
         }
 
         if (updateError) {
-          // 保留本地评论，避免输入框回退和评论瞬间消失；后台继续依赖轮询/下次交互重试同步
+          const classifiedError = classifyCommentPersistError(updateError, 'append_post_comment');
+          if (classifiedError?.blocking) {
+            if (optimisticComment?.id) {
+              baseDispatch({
+                type: 'DELETE_COMMENT',
+                payload: {
+                  postId,
+                  commentId: optimisticComment.id,
+                },
+              });
+            }
+            return { ok: false, error: classifiedError.message };
+          }
+
+          // 临时网络抖动时保留本地评论，并进入后台重试队列
           console.warn('[ADD_COMMENT] 持久化失败，保留本地评论并延迟重试:', updateError?.message || updateError);
           await enqueuePendingComment({
             type: 'post',
@@ -2800,7 +2853,21 @@ export function AppProvider({ children }) {
         });
 
         if (updateError) {
-          // 保留本地评论，避免输入框回退和评论瞬间消失；后台继续依赖轮询/下次交互重试同步
+          const classifiedError = classifyCommentPersistError(updateError, 'append_knowledge_comment');
+          if (classifiedError?.blocking) {
+            if (uploadedComment?.id) {
+              baseDispatch({
+                type: 'DELETE_KNOWLEDGE_COMMENT',
+                payload: {
+                  knowledgeId: item.id,
+                  commentId: uploadedComment.id,
+                },
+              });
+            }
+            return { ok: false, error: classifiedError.message };
+          }
+
+          // 临时网络抖动时保留本地评论，并进入后台重试队列
           console.warn('[ADD_KNOWLEDGE_COMMENT] 持久化失败，保留本地评论并延迟重试:', updateError?.message || updateError);
           await enqueuePendingComment({
             type: 'knowledge',
