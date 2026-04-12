@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Image, ScrollView, Alert, KeyboardAvoidingView, Platform, RefreshControl,
+  TextInput, Image, ScrollView, Alert, KeyboardAvoidingView, Platform, RefreshControl, Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -143,7 +143,11 @@ export default function FeedScreen({ navigation }) {
     });
     if (!result?.ok) {
       Alert.alert('评论失败', result?.error || '请稍后重试');
+      return;
     }
+
+    Keyboard.dismiss();
+    setExpandedComments(prev => ({ ...prev, [postId]: false }));
   };
 
   const openPostDetail = (postId) => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, Linking, KeyboardAvoidingView, Platform,
+  TextInput, Alert, Linking, KeyboardAvoidingView, Platform, Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -231,7 +231,10 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     });
     if (!result?.ok) {
       Alert.alert('评论失败', result?.error || '请稍后重试');
+      return;
     }
+
+    Keyboard.dismiss();
   };
 
   const appendEmoji = (emoji) => {

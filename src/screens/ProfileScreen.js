@@ -323,27 +323,7 @@ export default function ProfileScreen({ navigation }) {
 
   useEffect(() => {
     if (!showInteractions || !currentUserId) return;
-
-    let active = true;
-    (async () => {
-      const markRes = await dispatch({
-        type: 'MARK_NOTIFICATIONS_READ',
-        payload: { userId: currentUserId, readAt: new Date().toISOString() },
-      });
-
-      if (!active) return;
-
-      if (!markRes?.ok) {
-        Alert.alert('同步失败', markRes?.error || '消息已读状态同步失败，请稍后重试');
-        return;
-      }
-
-      await dispatch({ type: 'REFRESH_MESSAGE_INBOX', payload: { userId: currentUserId } });
-    })();
-
-    return () => {
-      active = false;
-    };
+    dispatch({ type: 'REFRESH_MESSAGE_INBOX', payload: { userId: currentUserId } });
   }, [showInteractions, currentUserId]);
 
   const markInteractionAsRead = async (interaction) => {
@@ -481,9 +461,9 @@ export default function ProfileScreen({ navigation }) {
               <Ionicons name="close" size={18} color="#999" />
             </TouchableOpacity>
           </View>
-          {incomingInteractions.length === 0 ? (
-            <Text style={styles.tipText}>暂无互动</Text>
-          ) : incomingInteractions.map(item => (
+          {unreadInteractions.length === 0 ? (
+            <Text style={styles.tipText}>暂无未读互动</Text>
+          ) : unreadInteractions.map(item => (
             <TouchableOpacity key={`${item.sourceType}_${item.id}`} style={styles.interactionItem} onPress={() => openInteraction(item)}>
               <Avatar user={item.fromUser} size={28} />
               {!item.isRead && <View style={styles.unreadDot} />}
