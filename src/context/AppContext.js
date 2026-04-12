@@ -1510,7 +1510,8 @@ function applyCloudPatch(state, patch, currentUserId) {
       bio: profile.bio,
       avatar: profile.avatar,
       avatarColor: profile.avatar_color,
-            .map(normalizeComment).some(comment => comment.id === uploadedComment.id);
+      friends: profile.friends,
+      subjects: profile.subjects,
     })));
 
     // 避免鉴权短暂抖动时 profiles 空结果把本地用户全部清空
