@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Image, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard,
@@ -21,6 +21,19 @@ export default function PostDetailScreen({ navigation, route }) {
   const [commentText, setCommentText] = useState('');
   const [replyTarget, setReplyTarget] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const scrollRef = useRef(null);
+  const scrollOffsetYRef = useRef(0);
+  const scrollViewportHeightRef = useRef(0);
+  const scrollContentHeightRef = useRef(0);
+
+  const ensureCommentVisibleIfNeeded = () => {
+    const viewportHeight = scrollViewportHeightRef.current;
+    const contentHeight = scrollContentHeightRef.current;
+    if (!viewportHeight || !contentHeight) return;
+    const hiddenBottom = contentHeight - (scrollOffsetYRef.current + viewportHeight);
+    if (hiddenBottom <= 20) return;
+    scrollRef.current?.scrollToEnd({ animated: true });
+  };
 
   const getUserById = id => users.find(user => user.id === id) || { name: '未知用户', avatarColor: '#ccc' };
   const resolveReplyingName = (comment) => {
@@ -40,7 +53,6 @@ export default function PostDetailScreen({ navigation, route }) {
       ...((livePost.videos || []).map(uri => ({ type: 'video', uri }))),
     ];
   }, [livePost]);
-
   if (!livePost) {
     return (
       <View style={styles.emptyWrap}>
@@ -82,6 +94,7 @@ export default function PostDetailScreen({ navigation, route }) {
     const previousReply = replyTarget;
     setReplyTarget(null);
     setShowEmojiPicker(false);
+    Keyboard.dismiss();
 
     const result = await dispatch({
       type: 'ADD_COMMENT',
@@ -103,7 +116,12 @@ export default function PostDetailScreen({ navigation, route }) {
       return;
     }
 
-    Keyboard.dismiss();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        ensureCommentVisibleIfNeeded();
+      });
+    });
+
   };
 
   const handleDelete = () => {
@@ -147,7 +165,21 @@ export default function PostDetailScreen({ navigation, route }) {
         ) : <View style={{ width: 22 }} />}
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        onLayout={(event) => {
+          scrollViewportHeightRef.current = event.nativeEvent.layout.height || 0;
+        }}
+        onContentSizeChange={(_, contentHeight) => {
+          scrollContentHeightRef.current = contentHeight || 0;
+        }}
+        onScroll={(event) => {
+          scrollOffsetYRef.current = event.nativeEvent.contentOffset?.y || 0;
+        }}
+        scrollEventThrottle={16}
+      >
         <View style={styles.authorRow}>
           <Avatar user={author} size={40} />
           <View style={styles.authorInfo}>

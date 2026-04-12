@@ -27,6 +27,7 @@ export default function NewPlanScreen({ navigation, route }) {
   const [date, setDate] = useState(getTodayStr());
   const [category, setCategory] = useState('study');
   const [enableReminder, setEnableReminder] = useState(false);
+  const [enableAutoCarry, setEnableAutoCarry] = useState(false);
   const [reminderHour, setReminderHour] = useState('21');
   const [reminderMinute, setReminderMinute] = useState('00');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -52,6 +53,7 @@ export default function NewPlanScreen({ navigation, route }) {
     setDate(originalDate);
     setCategory(rawCategory === 'life' ? 'life' : 'study');
     setEnableReminder(Boolean(reminderMatch));
+    setEnableAutoCarry(Boolean(editingPlan?.rolloverEnabled));
     setReminderHour(reminderMatch?.[1] || '21');
     setReminderMinute(reminderMatch?.[2] || '00');
   }, [editingPlan?.id]);
@@ -172,6 +174,7 @@ export default function NewPlanScreen({ navigation, route }) {
           category,
           tasks: isEditMode ? (editingPlan.tasks || []) : [],
           done: isEditMode ? Boolean(editingPlan.done) : false,
+          rolloverEnabled: enableAutoCarry,
           reminderAt: enableReminder ? `${date} ${reminderTime}` : '',
           createdAt: isEditMode ? (editingPlan.createdAt || new Date().toISOString()) : new Date().toISOString(),
         },
@@ -308,6 +311,19 @@ export default function NewPlanScreen({ navigation, route }) {
               <Text style={styles.quickDateText}>一周后</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.fieldCard}>
+          <View style={styles.reminderHeader}>
+            <Text style={styles.label}>跨天自动顺延</Text>
+            <TouchableOpacity
+              style={[styles.reminderToggle, enableAutoCarry && styles.reminderToggleOn]}
+              onPress={() => setEnableAutoCarry(prev => !prev)}
+            >
+              <Text style={[styles.reminderToggleText, enableAutoCarry && styles.reminderToggleTextOn]}>{enableAutoCarry ? '已开启' : '未开启'}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.reminderHint}>仅在每天 24 点后将“昨天未完成且开启此项”的规划自动补到今天，可手动删除且不会重复补回。</Text>
         </View>
 
         <View style={styles.fieldCard}>

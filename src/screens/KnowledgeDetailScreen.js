@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, Linking, KeyboardAvoidingView, Platform, Keyboard,
@@ -29,6 +29,19 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const scrollRef = useRef(null);
+  const scrollOffsetYRef = useRef(0);
+  const scrollViewportHeightRef = useRef(0);
+  const scrollContentHeightRef = useRef(0);
+
+  const ensureCommentVisibleIfNeeded = () => {
+    const viewportHeight = scrollViewportHeightRef.current;
+    const contentHeight = scrollContentHeightRef.current;
+    if (!viewportHeight || !contentHeight) return;
+    const hiddenBottom = contentHeight - (scrollOffsetYRef.current + viewportHeight);
+    if (hiddenBottom <= 24) return;
+    scrollRef.current?.scrollToEnd({ animated: true });
+  };
 
   if (!currentUser?.id) {
     return (
@@ -73,7 +86,6 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     ];
     return sections;
   }, [liveItem.correctAnswerImages, liveItem.images, liveItem.questionImages, liveItem.summaryImages, liveItem.wrongAnswerImages]);
-
   useEffect(() => {
     return () => {
       if (recording) {
@@ -212,6 +224,7 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
     setCommentAudioFiles([]);
     setReplyTarget(null);
     setShowEmojiPicker(false);
+    Keyboard.dismiss();
 
     const result = await dispatch({
       type: 'ADD_KNOWLEDGE_COMMENT',
@@ -234,7 +247,12 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
       return;
     }
 
-    Keyboard.dismiss();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        ensureCommentVisibleIfNeeded();
+      });
+    });
+
   };
 
   const appendEmoji = (emoji) => {
@@ -308,7 +326,21 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
         {liveItem.userId !== currentUser.id && <View style={{ width: 60 }} />}
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        onLayout={(event) => {
+          scrollViewportHeightRef.current = event.nativeEvent.layout.height || 0;
+        }}
+        onContentSizeChange={(_, contentHeight) => {
+          scrollContentHeightRef.current = contentHeight || 0;
+        }}
+        onScroll={(event) => {
+          scrollOffsetYRef.current = event.nativeEvent.contentOffset?.y || 0;
+        }}
+        scrollEventThrottle={16}
+      >
         <View style={styles.switchRow}>
           <TouchableOpacity
             style={[styles.switchBtn, !prevKnowledge && styles.switchBtnDisabled]}

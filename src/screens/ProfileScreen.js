@@ -334,19 +334,19 @@ export default function ProfileScreen({ navigation }) {
     });
   };
 
-  const openInteraction = async (interaction) => {
-    await markInteractionAsRead(interaction);
-
+  const openInteraction = (interaction) => {
     if (interaction.sourceType === 'post') {
       navigation.navigate('PostDetail', { postId: interaction.sourceId });
-      return;
+    } else {
+      const targetKnowledge = (knowledge || []).find(item => item.id === interaction.sourceId) || null;
+      navigation.navigate('KnowledgeDetail', {
+        knowledgeId: interaction.sourceId,
+        item: targetKnowledge,
+      });
     }
 
-    const targetKnowledge = (knowledge || []).find(item => item.id === interaction.sourceId) || null;
-    navigation.navigate('KnowledgeDetail', {
-      knowledgeId: interaction.sourceId,
-      item: targetKnowledge,
-    });
+    // 导航优先，已读回写异步执行，避免点击后卡顿等待网络
+    markInteractionAsRead(interaction).catch(() => {});
   };
 
   const handleToggleInteractions = () => {

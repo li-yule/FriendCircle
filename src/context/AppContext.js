@@ -13,7 +13,7 @@ const CLOUD_CONFIG_REQUIRED_MESSAGE = '当前版本仅支持云端存储，请�
 const CLOUD_POSTS_LIMIT = 300;
 const CLOUD_PLANS_LIMIT = 200;
 const CLOUD_KNOWLEDGE_LIMIT = 200;
-const CLOUD_POLL_INTERVAL_MS = 5000;
+const CLOUD_POLL_INTERVAL_MS = 8000;
 const AUTH_REQUEST_TIMEOUT_MS = 15000;
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -25,6 +25,8 @@ const STATE_CACHE_KEY = 'friendcircle_state_cache_v1';
 const PENDING_COMMENT_QUEUE_KEY = 'friendcircle_pending_comment_queue_v1';
 const PLAN_DONE_MARKER_ID = '__plan_done__';
 const PLAN_CATEGORY_MARKER_ID = '__plan_category__';
+const PLAN_ROLLOVER_MARKER_ID = '__plan_rollover__';
+const PLAN_ROLLOVER_SOURCE_MARKER_ID = '__plan_rollover_source__';
 const LOCAL_NEW_ITEM_KEEP_MS = 120000;
 const COMMENT_RETRY_BASE_DELAY_MS = 4000;
 const COMMENT_RETRY_MAX_DELAY_MS = 120000;
@@ -271,19 +273,49 @@ function normalizePlan(item) {
   const rawTasks = ensureArray(item?.tasks);
   const marker = rawTasks.find(task => task?.id === PLAN_DONE_MARKER_ID);
   const categoryMarker = rawTasks.find(task => task?.id === PLAN_CATEGORY_MARKER_ID);
+  const rolloverMarker = rawTasks.find(task => task?.id === PLAN_ROLLOVER_MARKER_ID);
+  const rolloverSourceMarker = rawTasks.find(task => task?.id === PLAN_ROLLOVER_SOURCE_MARKER_ID);
   const categoryValue = String(item?.category || categoryMarker?.text || '').trim().toLowerCase();
+
+  const parseRolloverSource = (textValue) => {
+    const raw = String(textValue || '').trim();
+    if (!raw) return { sourcePlanId: '', sourceDateKey: '' };
+    const delimiterIndex = raw.indexOf('|');
+    if (delimiterIndex < 0) {
+      return {
+        sourcePlanId: raw,
+        sourceDateKey: '',
+      };
+    }
+    const sourcePlanId = raw.slice(0, delimiterIndex);
+    const sourceDateKey = raw.slice(delimiterIndex + 1);
+    return {
+      sourcePlanId: String(sourcePlanId || '').trim(),
+      sourceDateKey: String(sourceDateKey || '').trim(),
+    };
+  };
+
+  const rolloverSource = parseRolloverSource(item?.rolloverSource || rolloverSourceMarker?.text);
   return {
     id: item?.id || generateId(),
     userId: item?.userId || item?.user_id || '',
     title: item?.title || '',
     date: item?.date || new Date().toISOString(),
-    tasks: rawTasks.filter(task => task?.id !== PLAN_DONE_MARKER_ID && task?.id !== PLAN_CATEGORY_MARKER_ID).map(task => ({
+    tasks: rawTasks.filter(task => (
+      task?.id !== PLAN_DONE_MARKER_ID
+      && task?.id !== PLAN_CATEGORY_MARKER_ID
+      && task?.id !== PLAN_ROLLOVER_MARKER_ID
+      && task?.id !== PLAN_ROLLOVER_SOURCE_MARKER_ID
+    )).map(task => ({
       id: task?.id || generateId(),
       text: task?.text || '',
       done: Boolean(task?.done),
       reminderTime: task?.reminderTime || '',
     })),
     category: categoryValue === 'life' ? 'life' : 'study',
+    rolloverEnabled: String((item?.rolloverEnabled ?? rolloverMarker?.text) || '').trim() === '1',
+    autoRolloverSourceId: rolloverSource.sourcePlanId,
+    autoRolloverSourceDateKey: rolloverSource.sourceDateKey,
     reminderAt: item?.reminderAt || item?.reminder_at || '',
     done: typeof item?.done === 'boolean' ? item.done : Boolean(marker?.done),
     createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
@@ -386,8 +418,13 @@ function serializePost(post) {
 
 function serializePlan(plan) {
   const normalized = normalizePlan(plan);
+  const rolloverSourceText = normalized.autoRolloverSourceId
+    ? `${normalized.autoRolloverSourceId}|${normalized.autoRolloverSourceDateKey || ''}`
+    : '';
   const serializedTasks = [
     { id: PLAN_CATEGORY_MARKER_ID, text: normalized.category || 'study', done: false, reminderTime: '' },
+    { id: PLAN_ROLLOVER_MARKER_ID, text: normalized.rolloverEnabled ? '1' : '0', done: false, reminderTime: '' },
+    ...(rolloverSourceText ? [{ id: PLAN_ROLLOVER_SOURCE_MARKER_ID, text: rolloverSourceText, done: false, reminderTime: '' }] : []),
     ...(normalized.done ? [{ id: PLAN_DONE_MARKER_ID, text: '', done: true, reminderTime: '' }] : []),
     ...normalized.tasks,
   ];

@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
@@ -19,6 +20,34 @@ export default function PlanScreen({ navigation }) {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'study' | 'life'
   const rolloverRunningRef = useRef(false);
+  const ROLLOVER_STORAGE_RETAIN_DAYS = 14;
+  const ROLLOVER_DELETED_SOURCE_LIMIT = 200;
+
+  const getDailyRolloverRunKey = (userId, dateKey) => `plan_rollover_run:${userId}:${dateKey}`;
+  const getRolloverDeletedSourceKey = (userId, dateKey) => `plan_rollover_deleted_sources:${userId}:${dateKey}`;
+
+  const cleanupRolloverStorage = async (userId, todayKey) => {
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const runPrefix = `plan_rollover_run:${userId}:`;
+      const deletedPrefix = `plan_rollover_deleted_sources:${userId}:`;
+      const keysToDelete = allKeys.filter((key) => {
+        if (!key.startsWith(runPrefix) && !key.startsWith(deletedPrefix)) return false;
+        const dateKey = key.split(':').pop();
+        if (!dateKey) return false;
+        const keyDate = new Date(`${dateKey}T00:00:00`);
+        const todayDate = new Date(`${todayKey}T00:00:00`);
+        if (Number.isNaN(keyDate.getTime()) || Number.isNaN(todayDate.getTime())) return false;
+        const diffDays = Math.floor((todayDate.getTime() - keyDate.getTime()) / (24 * 60 * 60 * 1000));
+        return diffDays > ROLLOVER_STORAGE_RETAIN_DAYS;
+      });
+      if (keysToDelete.length > 0) {
+        await AsyncStorage.multiRemove(keysToDelete);
+      }
+    } catch (_) {
+      // Best effort cleanup.
+    }
+  };
 
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const myFriendIds = new Set(safeCurrentUser.friends || []);
@@ -57,6 +86,9 @@ export default function PlanScreen({ navigation }) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayKey = toDateKey(today);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = toDateKey(yesterday);
 
     const buildTaskFingerprint = (taskList) => (taskList || [])
       .map(task => String(task?.text || '').trim())
@@ -76,11 +108,17 @@ export default function PlanScreen({ navigation }) {
         .map(plan => buildPlanFingerprint(plan, todayKey))
     );
 
+    const existingTodayBySource = new Set(
+      myAllPlans
+        .filter(plan => toDateKey(plan.date) === todayKey)
+        .map(plan => String(plan.autoRolloverSourceId || '').trim())
+        .filter(Boolean)
+    );
+
     const carryList = myAllPlans.filter(plan => {
-      const planDate = new Date(plan.date);
-      if (Number.isNaN(planDate.getTime())) return false;
-      planDate.setHours(0, 0, 0, 0);
-      if (planDate.getTime() >= today.getTime()) return false;
+      if (!plan.rolloverEnabled) return false;
+      if (plan.autoRolloverSourceId) return false;
+      if (toDateKey(plan.date) !== yesterdayKey) return false;
 
       const tasks = plan.tasks || [];
       const taskDone = tasks.length > 0 && tasks.every(task => task.done);
@@ -94,8 +132,22 @@ export default function PlanScreen({ navigation }) {
 
     const run = async () => {
       try {
+        const runKey = getDailyRolloverRunKey(currentUserId, todayKey);
+        const hasRun = await AsyncStorage.getItem(runKey);
+        if (hasRun === '1') return;
+
+        await cleanupRolloverStorage(currentUserId, todayKey);
+
+        const deletedSourceKey = getRolloverDeletedSourceKey(currentUserId, todayKey);
+        const deletedRaw = await AsyncStorage.getItem(deletedSourceKey);
+        const deletedSet = new Set(deletedRaw ? JSON.parse(deletedRaw) : []);
+
         for (const sourcePlan of carryList) {
           if (cancelled) break;
+          const sourceId = String(sourcePlan.id || '').trim();
+          if (!sourceId) continue;
+          if (deletedSet.has(sourceId)) continue;
+          if (existingTodayBySource.has(sourceId)) continue;
 
           const unfinishedTasks = (sourcePlan.tasks || [])
             .filter(task => !task.done)
@@ -114,6 +166,9 @@ export default function PlanScreen({ navigation }) {
             category: sourcePlan.category === 'life' ? 'life' : 'study',
             tasks: unfinishedTasks,
             done: false,
+            rolloverEnabled: true,
+            autoRolloverSourceDateKey: yesterdayKey,
+            autoRolloverSourceId: sourceId,
             reminderAt: '',
             createdAt: new Date().toISOString(),
           };
@@ -130,7 +185,12 @@ export default function PlanScreen({ navigation }) {
 
           if (result?.ok) {
             existingTodayFingerprints.add(fingerprint);
+            existingTodayBySource.add(sourceId);
           }
+        }
+
+        if (!cancelled) {
+          await AsyncStorage.setItem(runKey, '1');
         }
       } finally {
         rolloverRunningRef.current = false;
@@ -197,6 +257,19 @@ export default function PlanScreen({ navigation }) {
         text: '删除',
         style: 'destructive',
         onPress: async () => {
+          if (plan.autoRolloverSourceId) {
+            try {
+              const todayKey = toDateKey(new Date());
+              const deletedSourceKey = getRolloverDeletedSourceKey(currentUserId, todayKey);
+              const raw = await AsyncStorage.getItem(deletedSourceKey);
+              const list = raw ? JSON.parse(raw) : [];
+              const merged = Array.from(new Set([...list, String(plan.autoRolloverSourceId)]))
+                .slice(-ROLLOVER_DELETED_SOURCE_LIMIT);
+              await AsyncStorage.setItem(deletedSourceKey, JSON.stringify(merged));
+            } catch (_) {
+              // Best effort only, delete should not be blocked by local persistence failures.
+            }
+          }
           const result = await dispatch({ type: 'DELETE_PLAN', payload: plan.id });
           if (!result?.ok) {
             Alert.alert('删除失败', result?.error || '请稍后重试');

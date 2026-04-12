@@ -24,7 +24,30 @@ export default function FeedScreen({ navigation }) {
   const [timeFilter, setTimeFilter] = useState('all'); // 'all' | 'today' | 'date'
   const [selectedDate, setSelectedDate] = useState('');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const listRef = useRef(null);
+  const listViewportHeightRef = useRef(0);
+  const listScrollOffsetRef = useRef(0);
+  const cardLayoutMapRef = useRef(new Map());
   const prefetchCacheRef = useRef(new Set()); // 缓存已预加载的图片URI
+
+  const ensureCommentVisibleIfNeeded = (postId) => {
+    const layout = cardLayoutMapRef.current.get(postId);
+    const viewportHeight = listViewportHeightRef.current;
+    if (!layout || !viewportHeight) return;
+
+    const currentOffset = listScrollOffsetRef.current;
+    const viewportBottom = currentOffset + viewportHeight;
+    const cardBottom = layout.y + layout.height;
+    const visibleMargin = 20;
+
+    if (cardBottom <= viewportBottom - visibleMargin) {
+      return;
+    }
+
+    const nextOffset = Math.max(0, cardBottom - viewportHeight + visibleMargin);
+    if (nextOffset - currentOffset < 8) return;
+    listRef.current?.scrollToOffset({ offset: nextOffset, animated: true });
+  };
 
   if (!currentUser?.id) {
     return (
@@ -126,6 +149,7 @@ export default function FeedScreen({ navigation }) {
     setCommentInput(prev => ({ ...prev, [postId]: '' }));
     setReplyTarget(prev => ({ ...prev, [postId]: null }));
     setShowEmojiPicker(prev => ({ ...prev, [postId]: false }));
+    Keyboard.dismiss();
 
     const result = await dispatch({
       type: 'ADD_COMMENT',
@@ -146,8 +170,12 @@ export default function FeedScreen({ navigation }) {
       return;
     }
 
-    Keyboard.dismiss();
-    setExpandedComments(prev => ({ ...prev, [postId]: false }));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        ensureCommentVisibleIfNeeded(postId);
+      });
+    });
+
   };
 
   const openPostDetail = (postId) => {
@@ -180,9 +208,14 @@ export default function FeedScreen({ navigation }) {
     const author = getUserById(item.userId);
     const liked = (item.likes || []).includes(currentUser.id);
     const commentsVisible = expandedComments[item.id];
-
     return (
-      <View style={styles.card}>
+      <View
+        style={styles.card}
+        onLayout={(event) => {
+          const { y, height } = event.nativeEvent.layout;
+          cardLayoutMapRef.current.set(item.id, { y, height });
+        }}
+      >
         {/* 头部 */}
         <View style={styles.cardHeader}>
           <Avatar user={author} size={44} />
@@ -375,6 +408,7 @@ export default function FeedScreen({ navigation }) {
       />
 
       <FlatList
+        ref={listRef}
         data={visiblePosts}
         keyExtractor={item => item.id}
         renderItem={renderPost}
@@ -387,6 +421,13 @@ export default function FeedScreen({ navigation }) {
         viewabilityConfig={{
           itemVisiblePercentThreshold: 10,
         }}
+        onLayout={(event) => {
+          listViewportHeightRef.current = event.nativeEvent.layout.height || 0;
+        }}
+        onScroll={(event) => {
+          listScrollOffsetRef.current = event.nativeEvent.contentOffset?.y || 0;
+        }}
+        scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#C49A4B" />}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
