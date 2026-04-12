@@ -70,9 +70,9 @@ alter table public.messages add column if not exists source_comment_id text;
 
 create index if not exists idx_messages_user_unread on public.messages (user_id, is_read);
 create index if not exists idx_messages_user_created_at on public.messages (user_id, created_at desc);
+drop index if exists idx_messages_comment_unique;
 create unique index if not exists idx_messages_comment_unique
-on public.messages (user_id, actor_id, source_type, source_id, source_comment_id)
-where source_comment_id is not null;
+on public.messages (user_id, actor_id, source_type, source_id, source_comment_id);
 
 do $$
 declare
