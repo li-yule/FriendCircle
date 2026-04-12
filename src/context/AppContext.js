@@ -320,6 +320,7 @@ function normalizeMessage(item) {
     actorId: item?.actorId || item?.actor_id || '',
     sourceType: item?.sourceType || item?.source_type || 'post',
     sourceId: item?.sourceId || item?.source_id || '',
+    sourceCommentId: item?.sourceCommentId || item?.source_comment_id || '',
     sourcePreview: item?.sourcePreview || item?.source_preview || '',
     content: item?.content || '',
     createdAt: item?.createdAt || item?.created_at || new Date().toISOString(),
@@ -327,11 +328,31 @@ function normalizeMessage(item) {
   };
 }
 
+function buildMessageDedupKey(message) {
+  const sourceCommentId = String(message?.sourceCommentId || '').trim();
+  if (sourceCommentId) {
+    return [
+      String(message?.userId || ''),
+      String(message?.actorId || ''),
+      String(message?.sourceType || ''),
+      String(message?.sourceId || ''),
+      sourceCommentId,
+    ].join('::');
+  }
+  return `id::${String(message?.id || '')}`;
+}
+
 function normalizeInbox(inbox) {
   const value = inbox && typeof inbox === 'object' ? inbox : {};
+  const dedupMap = new Map();
+  ensureArray(value.interactions).map(normalizeMessage).forEach(message => {
+    const key = buildMessageDedupKey(message);
+    if (!key || dedupMap.has(key)) return;
+    dedupMap.set(key, message);
+  });
   return {
     unreadCount: Number(value.unreadCount || 0),
-    interactions: ensureArray(value.interactions).map(normalizeMessage),
+    interactions: Array.from(dedupMap.values()),
   };
 }
 
@@ -1053,7 +1074,7 @@ async function fetchMessageInbox(userId) {
       .eq('is_read', 0),
     supabase
       .from('messages')
-      .select('id,user_id,actor_id,source_type,source_id,source_preview,content,created_at,is_read')
+      .select('id,user_id,actor_id,source_type,source_id,source_comment_id,source_preview,content,created_at,is_read')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(80),

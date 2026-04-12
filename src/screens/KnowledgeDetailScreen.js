@@ -18,8 +18,9 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
   const { currentUser, users } = state;
   const item = route.params?.item;
+  const requestedKnowledgeId = route.params?.knowledgeId || item?.id || '';
   // 用实时数据
-  const liveItem = state.knowledge.find(k => k.id === item?.id) || item;
+  const liveItem = state.knowledge.find(k => k.id === requestedKnowledgeId) || item;
 
   const [commentText, setCommentText] = useState('');
   const [replyTarget, setReplyTarget] = useState(null);
@@ -29,15 +30,27 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
   const [isRecording, setIsRecording] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
-  if (!liveItem) {
-    navigation.goBack();
-    return null;
-  }
-
   if (!currentUser?.id) {
     return (
       <View style={styles.emptyWrap}>
         <Text style={styles.emptyText}>正在恢复登录状态...</Text>
+      </View>
+    );
+  }
+
+  if (!liveItem) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.emptyText}>该知识内容尚未同步到本地</Text>
+        <TouchableOpacity
+          style={styles.retryBtn}
+          onPress={() => dispatch({ type: 'REFRESH_CLOUD_STATE', payload: { userId: currentUser.id } })}
+        >
+          <Text style={styles.retryBtnText}>刷新重试</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backBtnText}>返回</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -594,6 +607,18 @@ export default function KnowledgeDetailScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F4EE' },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F4EE' },
+  emptyText: { color: '#6E655C', fontSize: 15 },
+  retryBtn: {
+    marginTop: 14,
+    backgroundColor: '#C49A4B',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  retryBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  backBtn: { marginTop: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  backBtnText: { color: '#8A8279', fontSize: 13 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

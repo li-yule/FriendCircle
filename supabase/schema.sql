@@ -70,6 +70,24 @@ alter table public.messages add column if not exists source_comment_id text;
 
 create index if not exists idx_messages_user_unread on public.messages (user_id, is_read);
 create index if not exists idx_messages_user_created_at on public.messages (user_id, created_at desc);
+
+delete from public.messages m
+using (
+  select id
+  from (
+    select
+      id,
+      row_number() over (
+        partition by user_id, actor_id, source_type, source_id, source_comment_id
+        order by created_at desc, id desc
+      ) as rn
+    from public.messages
+    where source_comment_id is not null
+  ) ranked
+  where ranked.rn > 1
+) dup
+where m.id = dup.id;
+
 drop index if exists idx_messages_comment_unique;
 create unique index if not exists idx_messages_comment_unique
 on public.messages (user_id, actor_id, source_type, source_id, source_comment_id);

@@ -29,9 +29,14 @@ export default function ProfileScreen({ navigation }) {
   const myPosts = currentUserId ? posts.filter(p => p.userId === currentUserId) : [];
   const myPlans = currentUserId ? plans.filter(p => p.userId === currentUserId) : [];
   const incomingInteractions = useMemo(() => {
-    return (inbox.interactions || []).map(item => {
+    const uniqueMap = new Map();
+
+    (inbox.interactions || []).forEach(item => {
+      const id = String(item?.id || '').trim();
+      if (!id || uniqueMap.has(id)) return;
+
       const fromUser = users.find(u => u.id === item.actorId) || { name: '未知', avatarColor: '#ccc' };
-      return {
+      uniqueMap.set(id, {
         id: item.id,
         sourceType: item.sourceType,
         sourceId: item.sourceId,
@@ -42,8 +47,11 @@ export default function ProfileScreen({ navigation }) {
         text: item.content || '',
         createdAt: item.createdAt,
         isRead: Number(item.isRead || 0) === 1,
-      };
+      });
     });
+
+    return Array.from(uniqueMap.values())
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [inbox.interactions, users]);
   const unreadInteractions = useMemo(() => incomingInteractions.filter(item => !item.isRead), [incomingInteractions]);
   const incomingCommentCount = Number(inbox.unreadCount || 0);
@@ -353,10 +361,12 @@ export default function ProfileScreen({ navigation }) {
       navigation.navigate('PostDetail', { postId: interaction.sourceId });
       return;
     }
-    const targetKnowledge = (knowledge || []).find(item => item.id === interaction.sourceId);
-    if (targetKnowledge) {
-      navigation.navigate('KnowledgeDetail', { item: targetKnowledge });
-    }
+
+    const targetKnowledge = (knowledge || []).find(item => item.id === interaction.sourceId) || null;
+    navigation.navigate('KnowledgeDetail', {
+      knowledgeId: interaction.sourceId,
+      item: targetKnowledge,
+    });
   };
 
   const handleToggleInteractions = () => {
