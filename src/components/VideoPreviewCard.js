@@ -5,10 +5,9 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 
 export default function VideoPreviewCard({ uri, label = '视频动态', style, showFloatingButton = true }) {
   const [playing, setPlaying] = useState(false);
-  const [activated, setActivated] = useState(false);
-  const [pendingAutoPlay, setPendingAutoPlay] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
-  const player = useVideoPlayer(activated ? uri : null, playerInstance => {
+  const player = useVideoPlayer(uri || null, playerInstance => {
     playerInstance.loop = false;
     playerInstance.muted = true;
     playerInstance.pause();
@@ -20,11 +19,6 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style, s
         player.pause();
         setPlaying(false);
       } else {
-        if (!activated) {
-          setActivated(true);
-          setPendingAutoPlay(true);
-          return;
-        }
         player.muted = false;
         player.play();
         setPlaying(true);
@@ -35,17 +29,31 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style, s
   };
 
   useEffect(() => {
-    if (!activated || !pendingAutoPlay) return;
     try {
-      player.muted = false;
-      player.play();
-      setPlaying(true);
+      setPlaying(false);
+      setIsReady(false);
+      player.pause();
+      player.currentTime = 0;
+      const sub = player.addListener('statusChange', ({ status }) => {
+        if (status === 'readyToPlay') {
+          setIsReady(true);
+          try {
+            player.pause();
+            player.currentTime = 0;
+          } catch {
+            // noop
+          }
+        }
+      });
+      return () => {
+        sub?.remove?.();
+      };
     } catch {
       setPlaying(false);
-    } finally {
-      setPendingAutoPlay(false);
+      setIsReady(false);
     }
-  }, [activated, pendingAutoPlay, player]);
+    return undefined;
+  }, [player, uri]);
 
   useEffect(() => {
     return () => {
@@ -60,15 +68,14 @@ export default function VideoPreviewCard({ uri, label = '视频动态', style, s
 
   return (
     <View style={[styles.container, style]}>
-      {activated ? (
-        <VideoView
-          player={player}
-          style={StyleSheet.absoluteFillObject}
-          nativeControls={false}
-          contentFit="cover"
-          surfaceType="textureView"
-        />
-      ) : null}
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFillObject}
+        nativeControls={false}
+        contentFit="cover"
+        surfaceType="textureView"
+      />
+      {!isReady ? <View style={styles.loadingMask} /> : null}
       <View style={[styles.overlay, playing && styles.overlayPlaying]} pointerEvents="none">
         <Ionicons name={playing ? 'pause-circle' : 'play-circle'} size={42} color="#fff" />
         <Text style={styles.label}>{label}</Text>
@@ -95,10 +102,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.12)',
+    backgroundColor: 'rgba(0,0,0,0.08)',
   },
   overlayPlaying: {
     backgroundColor: 'rgba(0,0,0,0.04)',
+  },
+  loadingMask: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#1A1A1A',
   },
   label: {
     color: '#fff',

@@ -52,13 +52,26 @@ export default function PlanScreen({ navigation }) {
   const getUserById = id => users.find(u => u.id === id) || { name: '未知', avatarColor: '#ccc' };
   const myFriendIds = new Set(safeCurrentUser.friends || []);
 
+  const toTimestampSafe = (value) => {
+    const ts = new Date(value || '').getTime();
+    return Number.isNaN(ts) ? 0 : ts;
+  };
+
+  const comparePlansStable = (a, b) => {
+    const dateDiff = toTimestampSafe(a?.date) - toTimestampSafe(b?.date);
+    if (dateDiff !== 0) return dateDiff;
+    const createdAtDiff = toTimestampSafe(a?.createdAt) - toTimestampSafe(b?.createdAt);
+    if (createdAtDiff !== 0) return createdAtDiff;
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  };
+
   const myPlans = useMemo(() => (currentUserId ? plans
     .filter(p => p.userId === currentUserId)
-    .sort((a, b) => new Date(a.date) - new Date(b.date)) : []), [plans, currentUserId]);
+    .sort(comparePlansStable) : []), [plans, currentUserId]);
 
   const friendPlans = useMemo(() => (currentUserId ? plans
     .filter(p => p.userId !== currentUserId && myFriendIds.has(p.userId))
-    .sort((a, b) => new Date(a.date) - new Date(b.date)) : []), [plans, currentUserId, safeCurrentUser.friends]);
+    .sort(comparePlansStable) : []), [plans, currentUserId, safeCurrentUser.friends]);
 
   const availableDateKeys = useMemo(
     () => [...new Set((activeTab === 'mine' ? myPlans : friendPlans).map(p => toDateKey(p.date)))].sort(),
@@ -216,7 +229,8 @@ export default function PlanScreen({ navigation }) {
 
   const data = (activeTab === 'mine' ? myPlans : friendPlans)
     .filter(item => toDateKey(item.date) === selectedDate)
-    .filter(item => categoryFilter === 'all' ? true : (item.category || 'study') === categoryFilter);
+    .filter(item => categoryFilter === 'all' ? true : (item.category || 'study') === categoryFilter)
+    .sort(comparePlansStable);
 
   const selectedSummary = useMemo(() => {
     const mineToday = myPlans.filter(item => toDateKey(item.date) === selectedDate);
