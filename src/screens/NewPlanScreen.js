@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Linking, Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { useApp } from '../context/AppContext';
@@ -12,6 +13,7 @@ import DatePickerSheet from '../components/DatePickerSheet';
 export default function NewPlanScreen({ navigation, route }) {
   const { state, dispatch } = useApp();
   const { currentUser } = state;
+  const autoCarryPrefKey = currentUser?.id ? `friendcircle_new_plan_auto_carry_pref:${currentUser.id}` : '';
   const editingPlan = route?.params?.plan || null;
   const isEditMode = Boolean(editingPlan?.id);
 
@@ -57,6 +59,20 @@ export default function NewPlanScreen({ navigation, route }) {
     setReminderHour(reminderMatch?.[1] || '21');
     setReminderMinute(reminderMatch?.[2] || '00');
   }, [editingPlan?.id]);
+
+  useEffect(() => {
+    if (isEditMode || !autoCarryPrefKey) return;
+    let active = true;
+
+    AsyncStorage.getItem(autoCarryPrefKey).then((value) => {
+      if (!active || value == null) return;
+      setEnableAutoCarry(value === '1');
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [autoCarryPrefKey, isEditMode]);
 
   useEffect(() => {
     let active = true;
@@ -185,6 +201,9 @@ export default function NewPlanScreen({ navigation, route }) {
     if (!result?.ok) {
       Alert.alert(isEditMode ? '保存失败' : '发布失败', result?.error || '请稍后重试');
       return;
+    }
+    if (autoCarryPrefKey) {
+      AsyncStorage.setItem(autoCarryPrefKey, enableAutoCarry ? '1' : '0').catch(() => {});
     }
     if (enableReminder) {
       scheduleReminder(trimmedTitle, date, reminderTime).catch(() => {});
@@ -318,7 +337,15 @@ export default function NewPlanScreen({ navigation, route }) {
             <Text style={styles.label}>跨天自动顺延</Text>
             <TouchableOpacity
               style={[styles.reminderToggle, enableAutoCarry && styles.reminderToggleOn]}
-              onPress={() => setEnableAutoCarry(prev => !prev)}
+              onPress={() => {
+                setEnableAutoCarry((prev) => {
+                  const next = !prev;
+                  if (!isEditMode && autoCarryPrefKey) {
+                    AsyncStorage.setItem(autoCarryPrefKey, next ? '1' : '0').catch(() => {});
+                  }
+                  return next;
+                });
+              }}
             >
               <Text style={[styles.reminderToggleText, enableAutoCarry && styles.reminderToggleTextOn]}>{enableAutoCarry ? '已开启' : '未开启'}</Text>
             </TouchableOpacity>
