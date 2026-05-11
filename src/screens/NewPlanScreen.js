@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Linking, Modal,
@@ -6,6 +6,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
+import { useFocusEffect } from '@react-navigation/native';
 import { useApp } from '../context/AppContext';
 import { formatDateKey, generateId, toDateKey } from '../utils/helpers';
 import DatePickerSheet from '../components/DatePickerSheet';
@@ -42,6 +43,11 @@ export default function NewPlanScreen({ navigation, route }) {
   const ITEM_HEIGHT = 44;
   const hourScrollRef = useRef(null);
   const minuteScrollRef = useRef(null);
+  const enableAutoCarryRef = useRef(false);
+
+  useEffect(() => {
+    enableAutoCarryRef.current = enableAutoCarry;
+  }, [enableAutoCarry]);
 
   useEffect(() => {
     if (!isEditMode) return;
@@ -60,8 +66,11 @@ export default function NewPlanScreen({ navigation, route }) {
     setReminderMinute(reminderMatch?.[2] || '00');
   }, [editingPlan?.id]);
 
-  useEffect(() => {
-    if (isEditMode || !autoCarryPrefKey) return;
+  useFocusEffect(useCallback(() => {
+    if (isEditMode || !autoCarryPrefKey) {
+      return undefined;
+    }
+
     let active = true;
 
     AsyncStorage.getItem(autoCarryPrefKey).then((value) => {
@@ -71,8 +80,9 @@ export default function NewPlanScreen({ navigation, route }) {
 
     return () => {
       active = false;
+      AsyncStorage.setItem(autoCarryPrefKey, enableAutoCarryRef.current ? '1' : '0').catch(() => {});
     };
-  }, [autoCarryPrefKey, isEditMode]);
+  }, [autoCarryPrefKey, isEditMode]));
 
   useEffect(() => {
     let active = true;
@@ -203,7 +213,7 @@ export default function NewPlanScreen({ navigation, route }) {
       return;
     }
     if (autoCarryPrefKey) {
-      AsyncStorage.setItem(autoCarryPrefKey, enableAutoCarry ? '1' : '0').catch(() => {});
+      await AsyncStorage.setItem(autoCarryPrefKey, enableAutoCarry ? '1' : '0').catch(() => {});
     }
     if (enableReminder) {
       scheduleReminder(trimmedTitle, date, reminderTime).catch(() => {});

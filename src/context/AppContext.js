@@ -16,7 +16,6 @@ const CLOUD_KNOWLEDGE_LIMIT = 200;
 const CLOUD_POLL_INTERVAL_MS = 8000;
 const AUTH_REQUEST_TIMEOUT_MS = 15000;
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_UPLOAD_BYTES = 20 * 1024 * 1024;
 const LOCAL_MUTATION_MUTE_MS = 2500;
 const AUTH_CACHE_KEY = 'friendcircle_auth_cache_v1';
 const CURRENT_USER_CACHE_KEY = 'friendcircle_current_user_cache_v1';
@@ -944,9 +943,8 @@ async function uploadAssetIfNeeded(userId, uri, folder) {
   const info = await FileSystem.getInfoAsync(uri, { size: true });
   const size = Number(info?.size || 0);
   const isVideoFile = folder.includes('video');
-  const maxBytes = isVideoFile ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
-  if (size > maxBytes) {
-    throw new Error(isVideoFile ? '视频文件过大，请控制在 20MB 以内' : '图片文件过大，请控制在 10MB 以内');
+  if (!isVideoFile && size > MAX_IMAGE_UPLOAD_BYTES) {
+    throw new Error('图片文件过大，请控制在 10MB 以内');
   }
 
   const extension = inferFileExtension(uri, folder.includes('audio') ? 'm4a' : 'jpg');

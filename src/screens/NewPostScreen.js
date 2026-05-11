@@ -11,7 +11,6 @@ import VideoPreviewCard from '../components/VideoPreviewCard';
 import { generateId } from '../utils/helpers';
 
 const COMMON_EMOJIS = ['😀', '😂', '🤣', '🥹', '😍', '😘', '😎', '😭', '😅', '😤', '🤔', '🙌', '👍', '👏', '🎉', '🔥', '✨', '❤️', '💪', '🙏', '🍀', '🌈', '📚', '🧠', '💯'];
-const MAX_VIDEO_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_VIDEO_DURATION_MS = 90 * 1000;
 
 export default function NewPostScreen({ navigation }) {
@@ -81,10 +80,6 @@ export default function NewPostScreen({ navigation }) {
     });
     if (!result.canceled) {
       const validAssets = (result.assets || []).filter(asset => {
-        if (asset?.fileSize && asset.fileSize > MAX_VIDEO_SIZE_BYTES) {
-          Alert.alert('视频过大', '请将视频控制在 20MB 以内');
-          return false;
-        }
         if (asset?.duration && asset.duration > MAX_VIDEO_DURATION_MS) {
           Alert.alert('视频过长', '请将视频时长控制在 90 秒以内');
           return false;
@@ -119,10 +114,6 @@ export default function NewPostScreen({ navigation }) {
     });
     if (!result.canceled) {
       const asset = result.assets?.[0];
-      if (asset?.fileSize && asset.fileSize > MAX_VIDEO_SIZE_BYTES) {
-        Alert.alert('视频过大', '请将视频控制在 20MB 以内');
-        return;
-      }
       if (asset?.duration && asset.duration > MAX_VIDEO_DURATION_MS) {
         Alert.alert('视频过长', '请将视频时长控制在 90 秒以内');
         return;
